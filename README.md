@@ -4,7 +4,7 @@
 [![Challenge](https://img.shields.io/badge/Official%20Challenge-ABCS--01-red.svg)](#official-problem-abcs-01)
 [![Backend](https://img.shields.io/badge/Backend-FastAPI%20%7C%20Python%203.14-green.svg)](#technology-stack)
 [![Frontend](https://img.shields.io/badge/Frontend-React%20%7C%20Vite%20%7C%20Tailwind-cyan.svg)](#technology-stack)
-[![Tests](https://img.shields.io/badge/Tests-60%2F60%20Passing-brightgreen.svg)](#running-tests)
+[![Tests](https://img.shields.io/badge/Tests-70%2F70%20Passing-brightgreen.svg)](#running-tests)
 
 Developed by hackathon team **404 Challengers** (`HK26-0010`), **CyberShield AI** is an intelligent, explainable security operations and threat detection platform. It ingests enterprise security telemetry, isolates behavioural anomalies, classifies sophisticated cyber attacks, calculates multi-factor risk scores, and dispatches real-time security alerts to an interactive SOC analyst dashboard.
 
@@ -34,97 +34,87 @@ Developed by hackathon team **404 Challengers** (`HK26-0010`), **CyberShield AI*
 | **Backend Framework** | Python + FastAPI + Uvicorn | High-concurrency async REST API and WebSocket broadcast hub |
 | **Data Processing** | Pandas + NumPy | Rolling-window aggregation, telemetry normalization, feature extraction |
 | **Machine Learning** | Scikit-learn (Isolation Forest) | Reproducible unsupervised outlier discovery & categorical preprocessing |
+| **Risk & Correlation** | Python Risk Engine | Transparent multi-factor risk scoring (0-100) & incident correlation |
 | **Persistence** | SQLite (WAL Mode) & Joblib | Lightweight relational storage & serialized ML artifact persistence |
 | **Testing & Quality** | Pytest + HTTPX TestClient | Comprehensive unit, integration, and security simulation testing |
 
 ---
 
-## Machine-Learning Anomaly Detection (`IsolationForest`)
+## Threat Risk Assessment & Incident Correlation
 
-CyberShield AI provides a reproducible, unsupervised anomaly detection pipeline (`backend/ml/anomaly.py`) powered by **Scikit-learn's Isolation Forest**.
+CyberShield AI features a transparent, multi-factor risk engine (`backend/risk_assessment.py`) that correlates rule-based detections, ML anomalies, and contextual telemetry into unified, prioritized `CorrelatedIncident` entities.
 
-### Pipeline Architecture & Leakage Prevention
-```
-                              ┌────────────────────────┐
-                              │ Training Telemetry     │
-                              │ (Synthetic Baseline)   │
-                              └───────────┬────────────┘
-                                          │
-                                          ▼
-                              ┌────────────────────────┐
-                              │ ColumnTransformer      │
-                              │ fit_transform(X_train) │
-                              └───────────┬────────────┘
-                                          │
-                                          ▼
-                              ┌────────────────────────┐
-                              │ IsolationForest.fit()  │
-                              │ (Unsupervised Trees)   │
-                              └───────────┬────────────┘
-                                          │
-                         ┌────────────────┴────────────────┐
-                         ▼                                 ▼
-             ┌───────────────────────┐         ┌───────────────────────┐
-             │ Model Persistence     │         │ Held-Out Inference    │
-             │ joblib.dump(artifact) │         │ transform() -> score()│
-             └───────────────────────┘         └───────────────────────┘
-```
-- **Zero Data Leakage:** Preprocessing scalers (`StandardScaler`) and encoders (`OneHotEncoder`) are fit strictly on training telemetry (`fit()`), then applied without re-fitting to evaluation data (`transform()`).
-- **Meaningful Extracted Features:**
-  - Cyclical temporal coordinates: $\sin(2\pi \cdot \text{hour}/24)$, $\cos(2\pi \cdot \text{hour}/24)$.
-  - Calendar indicators: `day_of_week`, `is_weekend`.
-  - Log payload magnitude: $\log(1 + \text{payload\_size})$.
-  - Contextual binary indicators: `is_failure`, `is_privileged_user`, `is_privileged_resource`, `is_external_ip`.
-  - Categorical action type: `event_type` encoded with `handle_unknown='ignore'`.
-- **Calibrated Scoring:** Raw decision function scores are converted into normalized probabilities in $[0.0, 1.0]$.
-- **Separation of Concerns:** ML anomaly findings (`AnomalyFinding`) remain distinct from deterministic rule alerts (`ThreatAlert`).
-- **Strict Non-Malicious Principle:** All anomaly outputs include an explicit disclaimer:  
-  > *"Statistical anomaly indicator only; does not necessarily indicate malicious intent."*
+### 4-Tier Severity Model
 
-### Held-Out Evaluation & Documented Limitations
-Evaluation performed on held-out synthetic telemetry (`backend/data/held_out_telemetry.csv`):
-- **Training Samples:** 40 baseline business events.
-- **Held-Out Evaluation Samples:** 20 events (16 normal, 4 synthetic outliers).
-- **Contamination Rate:** 0.10.
-- **Detected Outliers:** 4 / 20 ($20.0\%$).
-- **Mean Anomaly Score:** 0.448 across held-out distribution.
-- **Documented Limitations:**
-  1. *Unsupervised Nature:* Flags statistical deviations from the training distribution; benign anomalies (e.g., approved off-hours maintenance) may trigger elevated scores.
-  2. *Contamination Sensitivity:* Model sensitivity depends on the `contamination` hyperparameter, requiring domain-specific calibration.
-  3. *Synthetic Representation:* Initial baselines are trained on synthetic enterprise telemetry; production environments require real-world historical calibration.
+| Severity Tier | Composite Risk Score Band | Description | Typical Response SLA |
+| :--- | :---: | :--- | :---: |
+| **Critical** | **85 – 100** | High-confidence multi-stage attack or confirmed credential compromise (e.g., successful login following repeated brute-force failures targeting administrative accounts). | **Immediate (< 15 min)** |
+| **High** | **65 – 84** | Serious attack activity (e.g., active brute-forcing, volumetric spray bursts, unprecedented external subnet shifts). | **< 1 hour** |
+| **Medium** | **40 – 64** | Noticeable deviations from baseline behavior (e.g., unusual login hours, uncorroborated statistical anomalies). | **< 4 hours** |
+| **Low** | **0 – 39** | Informational policy findings or minor single-point anomalies with low confidence. | **Next business day** |
 
-### ML Pipeline Usage Example
+### Transparent Additive Risk Factor Model
+Every incident calculates a deterministic score in $[0, 100]$ using documented component adjustments:
+- **Rule Evidence Baseline:** Critical rule $= +80$, High rule $= +65$, Medium rule $= +40$, Low rule $= +20$.
+- **ML Anomaly Contribution:** $+5$ to $+15$ depending on Isolation Forest peak anomaly score.
+- **Privileged Identity Target:** $+10$ when targeting accounts like `root`, `admin`, or sensitive system services.
+- **External Network Ingress:** $+5$ when origin IP is from outside internal RFC 1918 private subnets.
+- **Multi-Rule Synergy:** $+10$ when multiple distinct attack tactics match the same entity.
+- **Velocity Burst:** $+5$ when $\ge 5$ correlated events occur within the correlation window.
+
+### Key Governance Guarantees
+1. **Strict Separation of Dimensions:** `severity` (impact tier), `confidence` ($0.0 \dots 1.0$), `anomaly_score` ($0.0 \dots 1.0$), and `composite_risk_score` ($0 \dots 100$) are calculated and reported independently.
+2. **Evidence-Based Correlation:** Only groups events that share a common entity (`username` or `source_ip`) within a configurable sliding window ($\le 15.0$ minutes). **Unrelated entities and distant timestamps are never co-mingled.**
+3. **Non-Confirmation Constraint:** **An incident is NEVER marked confirmed based solely on an anomaly score.** Anomaly-only clusters remain `is_confirmed = False`, `confirmation_status = "Unconfirmed Anomaly"`, with confidence capped at $\le 0.45$.
+4. **Safe Defensive Recommendations:** All findings provide prescriptive, non-destructive SOC guidance (e.g., out-of-band verification, session token revocation, temporary ingress rate-limiting).
+
+### End-to-End Pipeline Usage Example
 ```python
 from backend.ingestion import SecurityLogIngestion
+from backend.detection import ThreatDetectionEngine
 from backend.ml import AnomalyDetectionPipeline
+from backend.risk_assessment import ThreatRiskEngine
 
-# 1. Ingest baseline training telemetry
+# 1. Ingestion
 ingestion = SecurityLogIngestion()
-train_events = ingestion.process_file("backend/data/training_telemetry.csv").events
-test_events = ingestion.process_file("backend/data/held_out_telemetry.csv").events
+result = ingestion.process_file("backend/data/synthetic_logs.csv")
 
-# 2. Fit pipeline (leakage-free)
-pipeline = AnomalyDetectionPipeline(n_estimators=100, contamination=0.1, random_state=42)
-pipeline.fit(train_events)
+# 2. Rule Detection
+detection = ThreatDetectionEngine()
+alerts = detection.detect(result)
 
-# 3. Score held-out telemetry & persist
-findings = pipeline.score(test_events)
-pipeline.save("backend/models/anomaly_model.joblib")
+# 3. ML Anomaly Scoring
+ml_pipeline = AnomalyDetectionPipeline.load("backend/models/anomaly_model.joblib")
+anomalies = ml_pipeline.score(result)
 
-for finding in findings:
-    if finding.is_anomaly:
-        print(f"[{finding.finding_id}] Anomaly on {finding.entity} (Score: {finding.anomaly_score}): {finding.contributing_factors}")
+# 4. Threat Risk Assessment & Incident Correlation
+risk_engine = ThreatRiskEngine()
+incidents = risk_engine.assess_and_correlate(
+    events=result, rule_alerts=alerts, anomaly_findings=anomalies
+)
+
+for inc in incidents:
+    print(f"[{inc.severity}] {inc.title} (Score: {inc.composite_risk_score}/100, Conf: {inc.confidence})")
+    print(f"  Explanation: {inc.risk_explanation}")
+    print(f"  Action: {inc.defensive_recommendations[0]}")
 ```
+
+---
+
+## Machine-Learning Anomaly Detection (`IsolationForest`)
+
+- **Leakage-Free Preprocessing:** `ColumnTransformer` with `StandardScaler` and `OneHotEncoder` fit exclusively on training data.
+- **Features Extracted:** Cyclical hour coordinates ($\sin, \cos$), log payload magnitude, day-of-week, privileged identity flags, external IP indicators, and categorical action types.
+- **Model Persistence:** Safe serialization and deserialization using `joblib`.
+- **Disclaimer:** All findings include: *"Statistical anomaly indicator only; does not necessarily indicate malicious intent."*
 
 ---
 
 ## Rule-Based Threat Detection Engine
 
-Operates in parallel with ML models to catch known deterministic attack signatures:
-
 | Rule Name | Severity | Default Threshold | Description | MITRE Technique |
 | :--- | :---: | :--- | :--- | :--- |
-| **Repeated Failed Logins** | **High** | $\ge 5$ failures in $\le 10$ mins | Flags sustained brute-force authentications from the same source IP / user. | `T1110.001` (Password Guessing) |
+| **Repeated Failed Logins** | **High** | $\ge 5$ failures in $\le 10$ mins | Flags sustained brute-force authentications. | `T1110.001` (Password Guessing) |
 | **Success Following Repeated Failures** | **Critical** | $\ge 3$ failures followed by success in $\le 10$ mins | Identifies successful logins immediately preceded by repeated failures (account compromise). | `T1110.001` (Password Guessing) |
 | **Unusually High Login Frequency** | **High** | $\ge 10$ attempts in $\le 2$ mins | Flags volumetric bursts exceeding human interaction capability. | `T1110.003` (Password Spraying) |
 | **Unusual Login Hours** | **Medium / High** | $> 2$h outside baseline hours | Evaluates user logins against an established behavioral baseline ($\ge 5$ prior logins). | `T1078` (Valid Accounts) |
@@ -144,6 +134,7 @@ CyberShield/
 │   ├── ingestion.py              # Standalone Security Log Ingestion engine
 │   ├── main.py                   # FastAPI application entrypoint
 │   ├── requirements.txt          # Backend dependencies
+│   ├── risk_assessment.py        # Threat risk assessment & incident correlation engine
 │   ├── sample_logs.csv           # Baseline synthetic security telemetry
 │   ├── data/                     # Ingestion datasets and training data
 │   │   ├── .gitkeep
@@ -159,13 +150,15 @@ CyberShield/
 │   │   ├── __init__.py
 │   │   ├── alert.py              # ThreatAlert model
 │   │   ├── anomaly.py            # AnomalyFinding & ModelEvaluationReport models
-│   │   └── event.py              # SecurityEvent, IngestionResult & RejectedRow models
-│   └── tests/                    # Pytest test suite (60 passing tests)
+│   │   ├── event.py              # SecurityEvent, IngestionResult & RejectedRow models
+│   │   └── risk.py               # CorrelatedIncident, RiskFactor & RiskSeverity models
+│   └── tests/                    # Pytest test suite (70 passing tests)
 │       ├── __init__.py
 │       ├── test_anomaly.py       # 12 tests: ML pipeline, leakage, persistence, reproducibility
 │       ├── test_detection.py     # 23 tests: rules, boundaries, baselines, deduplication
 │       ├── test_ingestion.py     # 20 tests: ingestion, schemas, validation, pandas
-│       └── test_mvp.py           # 5 tests: MVP regression tests
+│       ├── test_mvp.py           # 5 tests: MVP regression tests
+│       └── test_risk_assessment.py # 10 tests: risk scoring, severity bands, correlation
 └── frontend/                     # React + Vite + Tailwind dashboard
     ├── index.html
     └── assets/
@@ -182,8 +175,9 @@ CyberShield/
 - [x] **Phase 02:** Standalone Security Log Ingestion module, event schema specification, synthetic telemetry, and Pytest validation.
 - [x] **Phase 03:** Explainable rule-based threat detection engine, configurable thresholds, behavioral baseline profiles, and 48 passing tests.
 - [x] **Phase 04:** Unsupervised machine-learning anomaly detection (`IsolationForest`), feature extraction, safe model persistence, and 60 passing tests.
-- [ ] **Phase 05:** Composite multi-factor threat risk assessment engine (0-100 scale) and real-time alert correlation.
-- [ ] **Phase 06:** React + Vite + Tailwind CSS SOC dashboard with real-time WebSocket alert streaming and incident triage drawer.
+- [x] **Phase 05:** Composite multi-factor threat risk assessment engine (0-100 scale), severity classification, incident correlation, and 70 passing tests.
+- [ ] **Phase 06:** Real-time security alerts via WebSockets, event stream dispatch, and automated triage lifecycle.
+- [ ] **Phase 07:** React + Vite + Tailwind CSS SOC dashboard with real-time threat feed and interactive telemetry charts.
 
 ---
 
@@ -208,8 +202,11 @@ uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
 
 ### 2. Running Tests
 ```bash
-# Run full test suite across all 60 tests
+# Run full test suite across all 70 tests
 pytest backend/tests
+
+# Run specifically the risk assessment & correlation tests
+pytest backend/tests/test_risk_assessment.py -v
 
 # Run specifically the ML anomaly detection tests
 pytest backend/tests/test_anomaly.py -v

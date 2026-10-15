@@ -4,7 +4,7 @@
 [![Challenge](https://img.shields.io/badge/Official%20Challenge-ABCS--01-red.svg)](#official-problem-abcs-01)
 [![Backend](https://img.shields.io/badge/Backend-FastAPI%20%7C%20Python%203.14-green.svg)](#technology-stack)
 [![Frontend](https://img.shields.io/badge/Frontend-React%20%7C%20Vite%20%7C%20Tailwind-cyan.svg)](#technology-stack)
-[![Tests](https://img.shields.io/badge/Tests-25%2F25%20Passing-brightgreen.svg)](#running-tests)
+[![Tests](https://img.shields.io/badge/Tests-48%2F48%20Passing-brightgreen.svg)](#running-tests)
 
 Developed by hackathon team **404 Challengers** (`HK26-0010`), **CyberShield AI** is an intelligent, explainable security operations and threat detection platform. It ingests enterprise security telemetry, isolates behavioural anomalies, classifies sophisticated cyber attacks, calculates multi-factor risk scores, and dispatches real-time security alerts to an interactive SOC analyst dashboard.
 
@@ -39,11 +39,62 @@ Developed by hackathon team **404 Challengers** (`HK26-0010`), **CyberShield AI*
 
 ---
 
-## Security Event Schema & Ingestion
+## Rule-Based Threat Detection Engine
 
-The ingestion engine enforces a canonical security telemetry schema while supporting heterogeneous vendor column headers via an alias dictionary.
+CyberShield AI provides a configurable, explainable detection engine (`backend/detection.py`) operating directly on normalized security events.
 
-### Standard Telemetry Schema
+### Core Detection Rules
+
+| Rule Name | Severity | Default Threshold | Description | MITRE Technique |
+| :--- | :---: | :--- | :--- | :--- |
+| **Repeated Failed Logins** | **High** | $\ge 5$ failures in $\le 10$ mins | Flags sustained authentication failures from the same source IP / user, preventing alert fatigue by ignoring isolated single failures. | `T1110.001` (Password Guessing) |
+| **Success Following Repeated Failures** | **Critical** | $\ge 3$ failures followed by success in $\le 10$ mins | Identifies successful authentications immediately preceded by repeated failed attempts, indicating potential credential cracking or account compromise. | `T1110.001` (Password Guessing) |
+| **Unusually High Login Frequency** | **High** | $\ge 10$ attempts in $\le 2$ mins | Flags volumetric burst velocities exceeding human capabilities, identifying automated credential stuffing or spray attacks. | `T1110.003` (Password Spraying) |
+| **Unusual Login Hours** | **Medium / High** | $> 2$h outside baseline hours | Evaluates user logins against an established behavioral baseline ($\ge 5$ prior logins). **Strictly requires baseline evidence before alerting.** | `T1078` (Valid Accounts) |
+| **Suspicious Login Behavioral Shift** | **High** | Unprecedented network subnet | Identifies authentications from unfamiliar subnets for users with established historical baselines ($\ge 8$ logins). | `T1078.003` (Local Accounts) |
+
+### Explainable Finding Structure (`ThreatAlert`)
+Every generated finding provides full evidentiary provenance:
+- **`alert_id`**: Deterministic sequential identifier (`CS-ALERT-0001`).
+- **`rule_name`**: Exact detection rule triggered.
+- **`timestamp`**: ISO-8601 UTC trigger timestamp.
+- **`entity_type` & `entity_value`**: Target subject (e.g., `source_ip: 203.0.113.100` or `username: admin`).
+- **`severity`**: Contextual severity rating (`Critical`, `High`, `Medium`, `Low`).
+- **`evidence_strength`**: Confidence level (`Strong`, `Moderate`, `Weak`).
+- **`explanation`**: Plain-English rationale detailing what occurred.
+- **`observed_value` & `threshold`**: Concrete metrics vs. configured bounds (e.g., `6 failed attempts in 4.5m` vs. `threshold: >= 5 in <= 10m`).
+- **`recommended_investigation_step`**: Prescriptive SOC remediation playbook action.
+- **`related_event_ids`**: SHA-256 fingerprints of contributing telemetry records.
+- **`fingerprint`**: Deterministic cryptographic hash preventing duplicate alerts on repeated batch runs.
+
+### End-to-End Ingestion & Detection Usage
+```python
+from backend.ingestion import SecurityLogIngestion
+from backend.detection import ThreatDetectionEngine, DetectionConfig
+
+# 1. Ingest raw telemetry
+ingestion = SecurityLogIngestion()
+result = ingestion.process_file("backend/data/synthetic_logs.csv")
+
+# 2. Configure detection thresholds
+config = DetectionConfig(
+    failed_login_threshold=5,
+    failed_login_window_minutes=10.0,
+    preceding_failures_threshold=3,
+    high_frequency_threshold=10,
+)
+engine = ThreatDetectionEngine(config=config)
+
+# 3. Detect threats and inspect explainable findings
+alerts = engine.detect(result)
+for alert in alerts:
+    print(f"[{alert.severity}] {alert.rule_name} on {alert.entity_value}: {alert.explanation}")
+    print(f"Action: {alert.recommended_investigation_step}")
+```
+
+---
+
+## Security Event Schema
 
 | Field | Type | Required | Description | Supported Aliases |
 | :--- | :--- | :---: | :--- | :--- |
@@ -57,74 +108,6 @@ The ingestion engine enforces a canonical security telemetry schema while suppor
 | `payload_size` | `integer` | No | Transferred payload bytes (defaults to `0`) | `bytes`, `size`, `bytes_sent`, `content_length`, `length` |
 | `fingerprint` | `string` | Auto | Deterministic SHA-256 hash for deduplication | Generated automatically from canonical event values |
 
-### Core Ingestion Guarantees
-- **Strict Ingestion Principle:** Ingestion strictly handles validation, normalization, and deduplication. **Events are never classified as attacks during ingestion**, preserving clean raw telemetry for downstream models.
-- **Resilient Batch Processing:** Malformed rows and unparseable dates are logged to `rejected_rows` with specific line numbers and reasons without aborting the entire batch.
-- **Deterministic Deduplication:** In-batch and cross-batch deduplication via cryptographic SHA-256 hashing.
-- **Pandas Ecosystem:** Export accepted telemetry directly to Pandas (`result.to_dataframe()`) with native UTC datetimes.
-
-### Ingestion Usage Example
-```python
-from backend.ingestion import SecurityLogIngestion
-
-# Initialize independent ingestion engine
-engine = SecurityLogIngestion(deduplicate=True)
-
-# Ingest from CSV file path, buffer, or string
-result = engine.process_file("backend/data/synthetic_logs.csv")
-
-print(f"Total rows: {result.total_rows}")
-print(f"Accepted: {result.accepted_count} | Duplicates: {result.duplicate_count} | Rejected: {result.rejected_count}")
-
-# Convert directly to Pandas DataFrame for downstream analysis
-df = result.to_dataframe()
-```
-
----
-
-## System Architecture & Detection Strategy
-
-```
-                              ┌────────────────────────┐
-                              │  Security Log Stream   │
-                              │  (CSV Batch / Webhook) │
-                              └───────────┬────────────┘
-                                          │
-                     ┌────────────────────┴───────────────────┐
-                     ▼                                        ▼
-         ┌───────────────────────┐                ┌───────────────────────┐
-         │ Layer 1: Rule Engine  │                │ Layer 2: Anomaly ML   │
-         │ Deterministic Rules   │                │ IsolationForest       │
-         └───────────┬───────────┘                └───────────┬───────────┘
-                     │                                        │
-                     └────────────────────┬───────────────────┘
-                                          ▼
-                             ┌─────────────────────────┐
-                             │ Layer 3: Classifier AI  │
-                             │ Supervised Threat Model │
-                             └────────────┬────────────┘
-                                          ▼
-                             ┌─────────────────────────┐
-                             │ Layer 4: Risk Assessor  │
-                             │ Multi-Factor 0-100 Score│
-                             └────────────┬────────────┘
-                                          ▼
-                             ┌─────────────────────────┐
-                             │ Real-Time Alert Engine  │
-                             │ WebSocket Stream + DB   │
-                             └────────────┬────────────┘
-                                          ▼
-                             ┌─────────────────────────┐
-                             │ React + Tailwind SOC    │
-                             │ Live Visual Dashboard   │
-                             └─────────────────────────┘
-```
-
-- **Layer 1 (Deterministic Fast Path):** Identifies obvious high-rate signatures within rolling 10-minute windows (e.g., $\ge 5$ failed authentications, password spraying across multiple targets).
-- **Layer 2 (Unsupervised Anomaly Model):** Uses an `IsolationForest` to discover statistical and temporal outliers that deviate from baseline behavior.
-- **Layer 3 (Supervised Threat Model):** Classifies complex attack vectors with probability distributions and feature importance scores.
-- **Layer 4 (Calibrated Risk Engine):** Computes an explainable 0–100 composite score factoring base severity, anomaly depth, asset sensitivity, and attack rate.
-
 ---
 
 ## Project Structure
@@ -135,6 +118,7 @@ CyberShield/
 ├── README.md                     # Comprehensive project documentation
 ├── PHASE_STATUS.md               # Implementation phases and milestone status
 ├── backend/
+│   ├── detection.py              # Configurable rule-based threat detection engine
 │   ├── ingestion.py              # Standalone Security Log Ingestion engine
 │   ├── main.py                   # FastAPI application entrypoint
 │   ├── requirements.txt          # Backend dependencies
@@ -145,11 +129,13 @@ CyberShield/
 │   │   └── synthetic_logs.csv    # Labeled synthetic security telemetry dataset
 │   ├── models/                   # Entity schemas and ML model artifacts
 │   │   ├── __init__.py
+│   │   ├── alert.py              # ThreatAlert model
 │   │   └── event.py              # SecurityEvent, IngestionResult & RejectedRow models
 │   └── tests/                    # Pytest test suite
 │       ├── __init__.py
-│       ├── test_ingestion.py     # 20+ comprehensive ingestion test cases
-│       └── test_mvp.py           # MVP regression tests
+│       ├── test_detection.py     # 23 tests: rules, boundaries, baselines, deduplication
+│       ├── test_ingestion.py     # 20 tests: ingestion, schemas, validation, pandas
+│       └── test_mvp.py           # 5 tests: MVP regression tests
 └── frontend/                     # React + Vite + Tailwind dashboard
     ├── index.html
     └── assets/
@@ -164,9 +150,10 @@ CyberShield/
 - [x] **Phase 00:** Architecture proposal, environment baseline inspection, and dependency mapping.
 - [x] **Phase 01:** Foundation establishment, approved directory structure, Git configuration, and documentation.
 - [x] **Phase 02:** Standalone Security Log Ingestion module, event schema specification, synthetic telemetry, and Pytest validation.
-- [ ] **Phase 03:** AI-based threat classification & anomaly detection pipelines (`IsolationForest` & Supervised Classifiers).
-- [ ] **Phase 04:** React + Vite + Tailwind CSS SOC dashboard with real-time WebSocket alert streaming and incident triage drawer.
-- [ ] **Phase 05:** End-to-end synthetic attack scenarios, performance benchmarks, and hackathon demonstration readiness.
+- [x] **Phase 03:** Explainable rule-based threat detection engine, configurable thresholds, behavioral baseline profiles, and 48 passing tests.
+- [ ] **Phase 04:** Unsupervised anomaly detection (`IsolationForest`) and multi-factor risk scoring engine.
+- [ ] **Phase 05:** React + Vite + Tailwind CSS SOC dashboard with real-time WebSocket alert streaming and incident triage drawer.
+- [ ] **Phase 06:** End-to-end synthetic attack scenarios, performance benchmarks, and hackathon demonstration readiness.
 
 ---
 
@@ -197,10 +184,13 @@ The backend API and interactive documentation will be available at:
 # Run full test suite with Pytest
 pytest backend/tests
 
+# Run specifically the detection test suite
+pytest backend/tests/test_detection.py -v
+
 # Run specifically the log ingestion test suite
 pytest backend/tests/test_ingestion.py -v
 
-# Alternatively run with Python's built-in unittest runner
+# Run legacy unittest regression suite
 python3 -m unittest backend/tests/test_mvp.py
 ```
 

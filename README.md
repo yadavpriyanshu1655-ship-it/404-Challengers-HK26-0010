@@ -4,7 +4,7 @@
 [![Challenge](https://img.shields.io/badge/Official%20Challenge-ABCS--01-red.svg)](#official-problem-abcs-01)
 [![Backend](https://img.shields.io/badge/Backend-FastAPI%20%7C%20Python%203.14-green.svg)](#technology-stack)
 [![Frontend](https://img.shields.io/badge/Frontend-React%20%7C%20Vite%20%7C%20Tailwind-cyan.svg)](#technology-stack)
-[![Testing](https://img.shields.io/badge/Tests-Pytest%20Passing-brightgreen.svg)](#running-tests)
+[![Tests](https://img.shields.io/badge/Tests-25%2F25%20Passing-brightgreen.svg)](#running-tests)
 
 Developed by hackathon team **404 Challengers** (`HK26-0010`), **CyberShield AI** is an intelligent, explainable security operations and threat detection platform. It ingests enterprise security telemetry, isolates behavioural anomalies, classifies sophisticated cyber attacks, calculates multi-factor risk scores, and dispatches real-time security alerts to an interactive SOC analyst dashboard.
 
@@ -36,6 +36,49 @@ Developed by hackathon team **404 Challengers** (`HK26-0010`), **CyberShield AI*
 | **Machine Learning** | Scikit-learn | `IsolationForest` (unsupervised anomaly) and `RandomForest` (classification) |
 | **Persistence** | SQLite (WAL Mode) | Lightweight, ACID-compliant relational storage with indexed tables |
 | **Testing & Quality** | Pytest + HTTPX TestClient | Comprehensive unit, integration, and security simulation testing |
+
+---
+
+## Security Event Schema & Ingestion
+
+The ingestion engine enforces a canonical security telemetry schema while supporting heterogeneous vendor column headers via an alias dictionary.
+
+### Standard Telemetry Schema
+
+| Field | Type | Required | Description | Supported Aliases |
+| :--- | :--- | :---: | :--- | :--- |
+| `timestamp` | `string` | **Yes** | Normalized ISO-8601 UTC timestamp (`YYYY-MM-DDTHH:MM:SSZ`) | `time`, `datetime`, `event_time`, `@timestamp`, `date`, `log_time` |
+| `source_ip` | `string` | **Yes** | Validated source IPv4 or IPv6 address | `src_ip`, `ip`, `client_ip`, `ip_address`, `source_address`, `host_ip` |
+| `destination_ip` | `string` | No | Target network address (defaults to `10.0.0.1`) | `dest_ip`, `dst_ip`, `server_ip`, `target_ip`, `target_address` |
+| `username` | `string` | **Yes** | User, service account, or subject initiating the action | `user`, `account`, `user_name`, `user_id`, `login_id`, `actor` |
+| `event_type` | `string` | **Yes** | Normalized lowercase event type (`login`, `file_access`, `sudo`) | `event`, `action`, `type`, `activity`, `event_name`, `method` |
+| `status` | `string` | **Yes** | Normalized action outcome (`success`, `failed`, `denied`, `error`) | `result`, `outcome`, `action_result`, `state`, `disposition` |
+| `resource` | `string` | No | URI, endpoint, or target system file (defaults to `/`) | `uri`, `url`, `endpoint`, `path`, `target`, `service` |
+| `payload_size` | `integer` | No | Transferred payload bytes (defaults to `0`) | `bytes`, `size`, `bytes_sent`, `content_length`, `length` |
+| `fingerprint` | `string` | Auto | Deterministic SHA-256 hash for deduplication | Generated automatically from canonical event values |
+
+### Core Ingestion Guarantees
+- **Strict Ingestion Principle:** Ingestion strictly handles validation, normalization, and deduplication. **Events are never classified as attacks during ingestion**, preserving clean raw telemetry for downstream models.
+- **Resilient Batch Processing:** Malformed rows and unparseable dates are logged to `rejected_rows` with specific line numbers and reasons without aborting the entire batch.
+- **Deterministic Deduplication:** In-batch and cross-batch deduplication via cryptographic SHA-256 hashing.
+- **Pandas Ecosystem:** Export accepted telemetry directly to Pandas (`result.to_dataframe()`) with native UTC datetimes.
+
+### Ingestion Usage Example
+```python
+from backend.ingestion import SecurityLogIngestion
+
+# Initialize independent ingestion engine
+engine = SecurityLogIngestion(deduplicate=True)
+
+# Ingest from CSV file path, buffer, or string
+result = engine.process_file("backend/data/synthetic_logs.csv")
+
+print(f"Total rows: {result.total_rows}")
+print(f"Accepted: {result.accepted_count} | Duplicates: {result.duplicate_count} | Rejected: {result.rejected_count}")
+
+# Convert directly to Pandas DataFrame for downstream analysis
+df = result.to_dataframe()
+```
 
 ---
 
@@ -92,17 +135,21 @@ CyberShield/
 ├── README.md                     # Comprehensive project documentation
 ├── PHASE_STATUS.md               # Implementation phases and milestone status
 ├── backend/
+│   ├── ingestion.py              # Standalone Security Log Ingestion engine
 │   ├── main.py                   # FastAPI application entrypoint
 │   ├── requirements.txt          # Backend dependencies
 │   ├── sample_logs.csv           # Baseline synthetic security telemetry
 │   ├── data/                     # Ingestion datasets and training data
 │   │   ├── .gitkeep
-│   │   └── sample_logs.csv
+│   │   ├── sample_logs.csv
+│   │   └── synthetic_logs.csv    # Labeled synthetic security telemetry dataset
 │   ├── models/                   # Entity schemas and ML model artifacts
-│   │   └── __init__.py
+│   │   ├── __init__.py
+│   │   └── event.py              # SecurityEvent, IngestionResult & RejectedRow models
 │   └── tests/                    # Pytest test suite
 │       ├── __init__.py
-│       └── test_mvp.py
+│       ├── test_ingestion.py     # 20+ comprehensive ingestion test cases
+│       └── test_mvp.py           # MVP regression tests
 └── frontend/                     # React + Vite + Tailwind dashboard
     ├── index.html
     └── assets/
@@ -116,9 +163,10 @@ CyberShield/
 
 - [x] **Phase 00:** Architecture proposal, environment baseline inspection, and dependency mapping.
 - [x] **Phase 01:** Foundation establishment, approved directory structure, Git configuration, and documentation.
-- [ ] **Phase 02:** Backend modularization, enhanced SQLite schema, Scikit-learn anomaly/classifier models, and Pytest coverage.
-- [ ] **Phase 03:** React + Vite + Tailwind CSS SOC dashboard with real-time WebSocket alert streaming and incident triage drawer.
-- [ ] **Phase 04:** End-to-end synthetic attack scenarios, performance benchmarks, and hackathon demonstration readiness.
+- [x] **Phase 02:** Standalone Security Log Ingestion module, event schema specification, synthetic telemetry, and Pytest validation.
+- [ ] **Phase 03:** AI-based threat classification & anomaly detection pipelines (`IsolationForest` & Supervised Classifiers).
+- [ ] **Phase 04:** React + Vite + Tailwind CSS SOC dashboard with real-time WebSocket alert streaming and incident triage drawer.
+- [ ] **Phase 05:** End-to-end synthetic attack scenarios, performance benchmarks, and hackathon demonstration readiness.
 
 ---
 
@@ -146,8 +194,11 @@ The backend API and interactive documentation will be available at:
 
 ### 2. Running Tests
 ```bash
-# Run test suite with Pytest
+# Run full test suite with Pytest
 pytest backend/tests
+
+# Run specifically the log ingestion test suite
+pytest backend/tests/test_ingestion.py -v
 
 # Alternatively run with Python's built-in unittest runner
 python3 -m unittest backend/tests/test_mvp.py

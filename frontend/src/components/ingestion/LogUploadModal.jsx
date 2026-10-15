@@ -119,6 +119,7 @@ export function LogUploadModal({ isOpen, onClose, onUploadSuccess }) {
           </div>
           <button
             onClick={onClose}
+            aria-label="Close modal"
             className="p-1.5 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded-lg transition-colors"
           >
             <X className="w-4 h-4" />

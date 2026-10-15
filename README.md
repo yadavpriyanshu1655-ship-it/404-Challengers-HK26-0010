@@ -4,7 +4,8 @@
 [![Challenge](https://img.shields.io/badge/Official%20Challenge-ABCS--01-red.svg)](#official-problem-abcs-01)
 [![Backend](https://img.shields.io/badge/Backend-FastAPI%20%7C%20Python%203.14-green.svg)](#technology-stack)
 [![Frontend](https://img.shields.io/badge/Frontend-React%20%7C%20Vite%20%7C%20Tailwind-cyan.svg)](#technology-stack)
-[![Tests](https://img.shields.io/badge/Tests-93%2F93%20Passing-brightgreen.svg)](#running-tests)
+[![Tests](https://img.shields.io/badge/Tests-109%2F109%20Passing-brightgreen.svg)](#running-tests)
+[![Security Policy](https://img.shields.io/badge/Security-Audited%20%26%20Hardened-blue.svg)](SECURITY.md)
 
 Developed by hackathon team **404 Challengers** (`HK26-0010`), **CyberShield AI** is an intelligent, explainable security operations and threat detection platform. It ingests enterprise security telemetry, isolates behavioural anomalies, classifies sophisticated cyber attacks, calculates multi-factor risk scores, and dispatches real-time security alerts to an interactive SOC analyst dashboard.
 
@@ -206,10 +207,11 @@ CyberShield/
 - [x] **Phase 06:** FastAPI REST backend, Pydantic schemas, SQLite persistence, filtered queries, CORS, and 88 passing tests.
 - [x] **Phase 07:** React + Vite + Tailwind CSS SOC dashboard with threat activity charts, alert inspection, and triage controls.
 - [x] **Phase 08:** Full-stack integration, live log upload station, and end-to-end demo verification (93 passing tests).
+- [x] **Phase 09:** Security review and quality assurance (input validation, SQLi/XSS resilience, error masking, false-positive evaluation, [SECURITY.md](SECURITY.md), 109 passing tests).
 
 ---
 
-## Full-Stack Integration & SOC Workflow (Phase 08)
+## Full-Stack Integration & SOC Workflow (Phase 08 & 09)
 
 CyberShield AI connects the React operations dashboard directly with the FastAPI intelligence backend:
 
@@ -246,8 +248,11 @@ uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
 
 ### 2. Running Backend Tests
 ```bash
-# Run full test suite across all 93 tests
+# Run full test suite across all 109 tests
 pytest backend/tests
+
+# Run specifically the Phase 09 Security & QA test suite
+pytest backend/tests/test_security_qa.py -v
 
 # Run specifically the Phase 08 End-to-End integration tests
 pytest backend/tests/test_e2e_integration.py -v

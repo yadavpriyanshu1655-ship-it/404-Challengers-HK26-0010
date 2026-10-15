@@ -55,6 +55,7 @@ export function AlertDetailDrawer({ alert, onClose, onUpdateStatus }) {
             </div>
             <button
               onClick={onClose}
+              aria-label="Close incident drawer"
               className="p-1.5 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded-lg transition-colors"
             >
               <X className="w-5 h-5" />

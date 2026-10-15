@@ -39,6 +39,7 @@ export function Header({
           disabled={isRefreshing}
           className="p-2 text-slate-400 hover:text-slate-100 hover:bg-slate-800 rounded-lg transition-colors border border-transparent hover:border-slate-700"
           title="Refresh telemetry"
+          aria-label="Refresh telemetry"
         >
           <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin text-cyan-400' : ''}`} />
         </button>
@@ -63,6 +64,7 @@ export function Header({
           onClick={onReset}
           className="p-2 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors border border-transparent hover:border-red-500/30"
           title="Clear events and alerts"
+          aria-label="Clear events and alerts"
         >
           <Trash2 className="w-4 h-4" />
         </button>

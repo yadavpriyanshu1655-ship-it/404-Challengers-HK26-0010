@@ -42,6 +42,36 @@ Developed by hackathon team **404 Challengers** (`HK26-0010`), **CyberShield AI*
 
 ---
 
+## System Architecture & Data Flow
+
+```mermaid
+flowchart TD
+    A["Raw Telemetry Logs (CSV / Streams)"] --> B["Security Log Ingestion Engine"]
+    B --> C["Schema Validation & Timestamp Normalization"]
+    C --> D["SHA-256 Deduplication Fingerprinting"]
+    D --> E["SQLite Database (WAL Mode)"]
+    D --> F["Dual Detection Subsystem"]
+    
+    subgraph "Dual Detection Subsystem"
+        F --> G["Rule-Based Engine (5 Detection Rules)"]
+        F --> H["ML Anomaly Pipeline (Isolation Forest)"]
+    end
+    
+    G --> I["MITRE ATT&CK Mapping (T1110, T1078)"]
+    H --> J["Calibrated Anomaly Scores (0.0 - 1.0)"]
+    
+    I --> K["Threat Risk Assessment & Correlation Engine"]
+    J --> K
+    
+    K --> L["Correlated Threat Incidents (4 Severity Tiers, 0-100 Score)"]
+    L --> E
+    
+    E --> M["FastAPI REST API Backend (Port 8000)"]
+    M --> N["React 18 + Tailwind SOC Dashboard"]
+```
+
+---
+
 ## React Security Dashboard Architecture
 
 CyberShield AI features a cybersecurity operations dashboard (`frontend/`) built with React, Vite, Tailwind CSS, Recharts, and Lucide icons.
@@ -110,10 +140,43 @@ Every incident calculates a deterministic score in $[0, 100]$ using documented c
 
 ## Machine-Learning Anomaly Detection (`IsolationForest`)
 
-- **Leakage-Free Preprocessing:** `ColumnTransformer` with `StandardScaler` and `OneHotEncoder` fit exclusively on training data.
-- **Features Extracted:** Cyclical hour coordinates ($\sin, \cos$), log payload magnitude, day-of-week, privileged identity flags, external IP indicators, and categorical action types.
-- **Model Persistence:** Safe serialization and deserialization using `joblib`.
-- **Disclaimer:** All findings include: *"Statistical anomaly indicator only; does not necessarily indicate malicious intent."*
+CyberShield AI integrates an unsupervised anomaly detection pipeline (`backend/ml/anomaly.py`) powered by Scikit-learn's `IsolationForest`:
+
+- **Leakage-Free Preprocessing:** A `ColumnTransformer` combines `StandardScaler` for numeric dimensions and `OneHotEncoder(handle_unknown='ignore')` for categorical types, fit strictly on training data (`training_telemetry.csv`).
+- **Feature Extraction:** 8 domain features extracted:
+  - Cyclical Hour of Day ($\sin(2\pi h/24), \cos(2\pi h/24)$)
+  - Day of Week (0–6)
+  - Log-transformed Payload Size ($\ln(1 + \text{bytes})$)
+  - Failure Flag ($0/1$)
+  - External IP Indicator (RFC 1918 private subnet check)
+  - Privileged Account Flag (`admin`, `root`, `service`)
+  - Categorical Event Type Encoding (`login`, `file_access`, `sudo_command`, `api_request`)
+- **Hyperparameters:** `n_estimators=100`, `contamination=0.08`, `random_state=42`, `n_jobs=-1`.
+- **Model Persistence:** Serialized safely via `joblib` to [`backend/models/isolation_forest.joblib`](file:///home/priyanshu/.gemini/antigravity/worktrees/CyberShield/architecture_proposal_threat_detection/backend/models/isolation_forest.joblib).
+- **Actual Held-Out Evaluation Metrics:**
+  - **Training Sample Count:** 40 events
+  - **Evaluation Sample Count:** 20 events (`held_out_telemetry.csv`)
+  - **Contamination Rate:** 0.08 (8%)
+  - **Detected Anomalies:** 4 events ($20\%$)
+  - **Mean Anomaly Score:** 0.4377
+- **Mandatory Governance Disclaimer:** Every anomaly finding carries an explicit advisory:
+  > *"Statistical anomaly indicator only; does not necessarily indicate malicious intent."*
+
+---
+
+## Datasets & Synthetic-Data Disclaimer
+
+CyberShield AI provides four clearly labeled CSV datasets located in `backend/data/`:
+
+| Dataset File | Event Count | Purpose & Description |
+| :--- | :---: | :--- |
+| `sample_logs.csv` | 11 | SOC demonstration dataset showcasing brute-force password guessing, credential compromise, and benign authentications. |
+| `synthetic_logs.csv` | 25 | Labeled benchmark dataset covering all 5 attack scenarios, baseline authentications, off-hour logins, and volumetric bursts. |
+| `training_telemetry.csv` | 40 | Normal baseline enterprise operations data used strictly for fitting ML scalers, encoders, and isolation trees. |
+| `held_out_telemetry.csv` | 20 | Unseen test telemetry used for evaluating model anomaly detection rates and decision functions without leakage. |
+
+> [!NOTE]
+> **Synthetic Data Disclaimer:** All security telemetry and user identities in these datasets are synthetically generated for challenge **ABCS-01**. They are clearly labeled as benchmark data and do not represent actual customer or corporate systems.
 
 ---
 
@@ -136,6 +199,8 @@ CyberShield/
 ├── .gitignore                    # Exclusions for environments, bytecode, logs, builds
 ├── README.md                     # Comprehensive project documentation
 ├── PHASE_STATUS.md               # Implementation phases and milestone status
+├── DEMO_AND_PRESENTATION.md      # Hackathon submission handbook, demo guide & speaking script
+├── SECURITY.md                   # Defensive security model, threat review & operational controls
 ├── backend/
 │   ├── detection.py              # Configurable rule-based threat detection engine
 │   ├── ingestion.py              # Standalone Security Log Ingestion engine
@@ -166,14 +231,16 @@ CyberShield/
 │   ├── schemas/                  # Pydantic v2 REST API schemas
 │   │   ├── __init__.py
 │   │   └── api.py                # Health, Event, Alert, Dashboard & Error schemas
-│   └── tests/                    # Pytest test suite (88 passing tests)
+│   └── tests/                    # Pytest test suite (109 passing tests)
 │       ├── __init__.py
 │       ├── test_anomaly.py       # 12 tests: ML pipeline, leakage, persistence, reproducibility
 │       ├── test_api.py           # 18 tests: FastAPI REST endpoints, uploads, filters, CORS
 │       ├── test_detection.py     # 23 tests: rules, boundaries, baselines, deduplication
+│       ├── test_e2e_integration.py # 5 tests: full-stack upload to alert drawer lifecycle
 │       ├── test_ingestion.py     # 20 tests: ingestion, schemas, validation, pandas
 │       ├── test_mvp.py           # 5 tests: MVP regression tests
-│       └── test_risk_assessment.py # 10 tests: risk scoring, severity bands, correlation
+│       ├── test_risk_assessment.py # 10 tests: risk scoring, severity bands, correlation
+│       └── test_security_qa.py   # 16 tests: SQLi resilience, XSS inertness, traceback masking
 └── frontend/                     # React + Vite + Tailwind dashboard
     ├── index.html                # Vite HTML mount
     ├── package.json              # Node dependencies & scripts
@@ -208,6 +275,7 @@ CyberShield/
 - [x] **Phase 07:** React + Vite + Tailwind CSS SOC dashboard with threat activity charts, alert inspection, and triage controls.
 - [x] **Phase 08:** Full-stack integration, live log upload station, and end-to-end demo verification (93 passing tests).
 - [x] **Phase 09:** Security review and quality assurance (input validation, SQLi/XSS resilience, error masking, false-positive evaluation, [SECURITY.md](SECURITY.md), 109 passing tests).
+- [x] **Phase 10:** Hackathon submission and demo preparation (reproducible demo scenario, 3–5 min speaking script, presentation deck outline, final acceptance checklist, [DEMO_AND_PRESENTATION.md](DEMO_AND_PRESENTATION.md)).
 
 ---
 
@@ -290,6 +358,47 @@ npm run dev
 # Build production bundle
 npm run build
 ```
+
+---
+
+## Hackathon Submission & Demonstration Guide (Phase 10)
+
+For evaluators and judges of **Challenge ABCS-01**, all submission and presentation deliverables are compiled in the dedicated handbook:
+
+👉 **[DEMO_AND_PRESENTATION.md](DEMO_AND_PRESENTATION.md)**
+
+### Key Submission Deliverables Included
+1. **Reproducible Demo Scenario (7 Steps):** Complete walkthrough from cold startup (`uvicorn backend.main:app`), log ingestion, brute-force alert inspection, anomaly triage, to SOC lifecycle resolution.
+2. **3–5 Minute Speaking Script:** Time-stamped, cue-by-cue script tailored for live pitch and technical demo evaluations.
+3. **7-Slide Presentation Deck Outline:** Structured slides covering Problem, Architecture, Dual Detection, Risk Correlation, Verification, Impact, and Roadmap.
+4. **Final Acceptance Checklist:** Line-by-line verification against all 5 official ABCS-01 requirements (AI Detection, Anomaly Detection, Risk Assessment, Real-Time Alerts, SOC Dashboard).
+
+---
+
+## Known Limitations & Operational Boundaries
+
+To maintain technical integrity and avoid unsupported claims, the prototype's operational boundaries are documented below:
+
+1. **Synthetic Telemetry Baseline:**
+   - The system is evaluated on synthetic security logs (`backend/data/`). It has not been benchmarked against live enterprise APT traffic or high-volume multi-gigabit perimeter logs. Real-world deployment requires domain-specific re-training.
+2. **Unsupervised Anomaly Non-Confirmation:**
+   - As an unsupervised algorithm, `IsolationForest` identifies statistical feature outliers, not confirmed malicious behavior. CyberShield AI strictly enforces the non-confirmation constraint: anomalies without rule-based attack signatures are capped at Medium severity and marked unconfirmed.
+3. **Single-Node Ingestion & File Ceiling:**
+   - Ingestion is optimized for batch CSV uploads up to **10 MB** (enforced by FastAPI middleware). High-velocity streaming ingestion requires distributed brokers (e.g., Apache Kafka).
+4. **SQLite Storage Backend:**
+   - The database engine is SQLite with Write-Ahead Logging (WAL). While suitable for prototype evaluations and moderate SOC workloads, multi-node enterprise deployments require PostgreSQL or a dedicated time-series database.
+5. **No Destructive Active Defense:**
+   - Prescriptive recommendations in alerts are defensive and advisory (e.g., identity verification, credential resets, edge rate-limiting). The prototype intentionally does not execute destructive automated firewall changes or host shutdowns.
+
+---
+
+## Future Improvements & Strategic Roadmap
+
+- **Streaming Telemetry Pipeline:** Native connectors for Apache Kafka, AWS Kinesis, and syslog RFC-5424 streams for sub-second ingestion.
+- **Bi-Directional SIEM Integrations:** Webhook forwarders to Splunk, Microsoft Sentinel, and Elastic Security.
+- **Generative AI SOC Assistant:** Secure local LLM copilot for natural language investigation queries and automated incident briefing generation.
+- **Graph-Based Attack Path Correlation:** Graph database integration (Neo4j) to map multi-stage lateral movement and privilege escalation chains across network subnets.
+- **Automated Baseline Profiling:** Automated rolling baseline calculation for user behavior analytics (UBA) over 30-day sliding windows.
 
 ---
 

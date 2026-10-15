@@ -4,7 +4,7 @@
 [![Challenge](https://img.shields.io/badge/Official%20Challenge-ABCS--01-red.svg)](#official-problem-abcs-01)
 [![Backend](https://img.shields.io/badge/Backend-FastAPI%20%7C%20Python%203.14-green.svg)](#technology-stack)
 [![Frontend](https://img.shields.io/badge/Frontend-React%20%7C%20Vite%20%7C%20Tailwind-cyan.svg)](#technology-stack)
-[![Tests](https://img.shields.io/badge/Tests-48%2F48%20Passing-brightgreen.svg)](#running-tests)
+[![Tests](https://img.shields.io/badge/Tests-60%2F60%20Passing-brightgreen.svg)](#running-tests)
 
 Developed by hackathon team **404 Challengers** (`HK26-0010`), **CyberShield AI** is an intelligent, explainable security operations and threat detection platform. It ingests enterprise security telemetry, isolates behavioural anomalies, classifies sophisticated cyber attacks, calculates multi-factor risk scores, and dispatches real-time security alerts to an interactive SOC analyst dashboard.
 
@@ -33,80 +33,102 @@ Developed by hackathon team **404 Challengers** (`HK26-0010`), **CyberShield AI*
 | **Visualizations** | Recharts / Native SVG | Real-time incident velocity and severity distribution charts |
 | **Backend Framework** | Python + FastAPI + Uvicorn | High-concurrency async REST API and WebSocket broadcast hub |
 | **Data Processing** | Pandas + NumPy | Rolling-window aggregation, telemetry normalization, feature extraction |
-| **Machine Learning** | Scikit-learn | `IsolationForest` (unsupervised anomaly) and `RandomForest` (classification) |
-| **Persistence** | SQLite (WAL Mode) | Lightweight, ACID-compliant relational storage with indexed tables |
+| **Machine Learning** | Scikit-learn (Isolation Forest) | Reproducible unsupervised outlier discovery & categorical preprocessing |
+| **Persistence** | SQLite (WAL Mode) & Joblib | Lightweight relational storage & serialized ML artifact persistence |
 | **Testing & Quality** | Pytest + HTTPX TestClient | Comprehensive unit, integration, and security simulation testing |
+
+---
+
+## Machine-Learning Anomaly Detection (`IsolationForest`)
+
+CyberShield AI provides a reproducible, unsupervised anomaly detection pipeline (`backend/ml/anomaly.py`) powered by **Scikit-learn's Isolation Forest**.
+
+### Pipeline Architecture & Leakage Prevention
+```
+                              ┌────────────────────────┐
+                              │ Training Telemetry     │
+                              │ (Synthetic Baseline)   │
+                              └───────────┬────────────┘
+                                          │
+                                          ▼
+                              ┌────────────────────────┐
+                              │ ColumnTransformer      │
+                              │ fit_transform(X_train) │
+                              └───────────┬────────────┘
+                                          │
+                                          ▼
+                              ┌────────────────────────┐
+                              │ IsolationForest.fit()  │
+                              │ (Unsupervised Trees)   │
+                              └───────────┬────────────┘
+                                          │
+                         ┌────────────────┴────────────────┐
+                         ▼                                 ▼
+             ┌───────────────────────┐         ┌───────────────────────┐
+             │ Model Persistence     │         │ Held-Out Inference    │
+             │ joblib.dump(artifact) │         │ transform() -> score()│
+             └───────────────────────┘         └───────────────────────┘
+```
+- **Zero Data Leakage:** Preprocessing scalers (`StandardScaler`) and encoders (`OneHotEncoder`) are fit strictly on training telemetry (`fit()`), then applied without re-fitting to evaluation data (`transform()`).
+- **Meaningful Extracted Features:**
+  - Cyclical temporal coordinates: $\sin(2\pi \cdot \text{hour}/24)$, $\cos(2\pi \cdot \text{hour}/24)$.
+  - Calendar indicators: `day_of_week`, `is_weekend`.
+  - Log payload magnitude: $\log(1 + \text{payload\_size})$.
+  - Contextual binary indicators: `is_failure`, `is_privileged_user`, `is_privileged_resource`, `is_external_ip`.
+  - Categorical action type: `event_type` encoded with `handle_unknown='ignore'`.
+- **Calibrated Scoring:** Raw decision function scores are converted into normalized probabilities in $[0.0, 1.0]$.
+- **Separation of Concerns:** ML anomaly findings (`AnomalyFinding`) remain distinct from deterministic rule alerts (`ThreatAlert`).
+- **Strict Non-Malicious Principle:** All anomaly outputs include an explicit disclaimer:  
+  > *"Statistical anomaly indicator only; does not necessarily indicate malicious intent."*
+
+### Held-Out Evaluation & Documented Limitations
+Evaluation performed on held-out synthetic telemetry (`backend/data/held_out_telemetry.csv`):
+- **Training Samples:** 40 baseline business events.
+- **Held-Out Evaluation Samples:** 20 events (16 normal, 4 synthetic outliers).
+- **Contamination Rate:** 0.10.
+- **Detected Outliers:** 4 / 20 ($20.0\%$).
+- **Mean Anomaly Score:** 0.448 across held-out distribution.
+- **Documented Limitations:**
+  1. *Unsupervised Nature:* Flags statistical deviations from the training distribution; benign anomalies (e.g., approved off-hours maintenance) may trigger elevated scores.
+  2. *Contamination Sensitivity:* Model sensitivity depends on the `contamination` hyperparameter, requiring domain-specific calibration.
+  3. *Synthetic Representation:* Initial baselines are trained on synthetic enterprise telemetry; production environments require real-world historical calibration.
+
+### ML Pipeline Usage Example
+```python
+from backend.ingestion import SecurityLogIngestion
+from backend.ml import AnomalyDetectionPipeline
+
+# 1. Ingest baseline training telemetry
+ingestion = SecurityLogIngestion()
+train_events = ingestion.process_file("backend/data/training_telemetry.csv").events
+test_events = ingestion.process_file("backend/data/held_out_telemetry.csv").events
+
+# 2. Fit pipeline (leakage-free)
+pipeline = AnomalyDetectionPipeline(n_estimators=100, contamination=0.1, random_state=42)
+pipeline.fit(train_events)
+
+# 3. Score held-out telemetry & persist
+findings = pipeline.score(test_events)
+pipeline.save("backend/models/anomaly_model.joblib")
+
+for finding in findings:
+    if finding.is_anomaly:
+        print(f"[{finding.finding_id}] Anomaly on {finding.entity} (Score: {finding.anomaly_score}): {finding.contributing_factors}")
+```
 
 ---
 
 ## Rule-Based Threat Detection Engine
 
-CyberShield AI provides a configurable, explainable detection engine (`backend/detection.py`) operating directly on normalized security events.
-
-### Core Detection Rules
+Operates in parallel with ML models to catch known deterministic attack signatures:
 
 | Rule Name | Severity | Default Threshold | Description | MITRE Technique |
 | :--- | :---: | :--- | :--- | :--- |
-| **Repeated Failed Logins** | **High** | $\ge 5$ failures in $\le 10$ mins | Flags sustained authentication failures from the same source IP / user, preventing alert fatigue by ignoring isolated single failures. | `T1110.001` (Password Guessing) |
-| **Success Following Repeated Failures** | **Critical** | $\ge 3$ failures followed by success in $\le 10$ mins | Identifies successful authentications immediately preceded by repeated failed attempts, indicating potential credential cracking or account compromise. | `T1110.001` (Password Guessing) |
-| **Unusually High Login Frequency** | **High** | $\ge 10$ attempts in $\le 2$ mins | Flags volumetric burst velocities exceeding human capabilities, identifying automated credential stuffing or spray attacks. | `T1110.003` (Password Spraying) |
-| **Unusual Login Hours** | **Medium / High** | $> 2$h outside baseline hours | Evaluates user logins against an established behavioral baseline ($\ge 5$ prior logins). **Strictly requires baseline evidence before alerting.** | `T1078` (Valid Accounts) |
-| **Suspicious Login Behavioral Shift** | **High** | Unprecedented network subnet | Identifies authentications from unfamiliar subnets for users with established historical baselines ($\ge 8$ logins). | `T1078.003` (Local Accounts) |
-
-### Explainable Finding Structure (`ThreatAlert`)
-Every generated finding provides full evidentiary provenance:
-- **`alert_id`**: Deterministic sequential identifier (`CS-ALERT-0001`).
-- **`rule_name`**: Exact detection rule triggered.
-- **`timestamp`**: ISO-8601 UTC trigger timestamp.
-- **`entity_type` & `entity_value`**: Target subject (e.g., `source_ip: 203.0.113.100` or `username: admin`).
-- **`severity`**: Contextual severity rating (`Critical`, `High`, `Medium`, `Low`).
-- **`evidence_strength`**: Confidence level (`Strong`, `Moderate`, `Weak`).
-- **`explanation`**: Plain-English rationale detailing what occurred.
-- **`observed_value` & `threshold`**: Concrete metrics vs. configured bounds (e.g., `6 failed attempts in 4.5m` vs. `threshold: >= 5 in <= 10m`).
-- **`recommended_investigation_step`**: Prescriptive SOC remediation playbook action.
-- **`related_event_ids`**: SHA-256 fingerprints of contributing telemetry records.
-- **`fingerprint`**: Deterministic cryptographic hash preventing duplicate alerts on repeated batch runs.
-
-### End-to-End Ingestion & Detection Usage
-```python
-from backend.ingestion import SecurityLogIngestion
-from backend.detection import ThreatDetectionEngine, DetectionConfig
-
-# 1. Ingest raw telemetry
-ingestion = SecurityLogIngestion()
-result = ingestion.process_file("backend/data/synthetic_logs.csv")
-
-# 2. Configure detection thresholds
-config = DetectionConfig(
-    failed_login_threshold=5,
-    failed_login_window_minutes=10.0,
-    preceding_failures_threshold=3,
-    high_frequency_threshold=10,
-)
-engine = ThreatDetectionEngine(config=config)
-
-# 3. Detect threats and inspect explainable findings
-alerts = engine.detect(result)
-for alert in alerts:
-    print(f"[{alert.severity}] {alert.rule_name} on {alert.entity_value}: {alert.explanation}")
-    print(f"Action: {alert.recommended_investigation_step}")
-```
-
----
-
-## Security Event Schema
-
-| Field | Type | Required | Description | Supported Aliases |
-| :--- | :--- | :---: | :--- | :--- |
-| `timestamp` | `string` | **Yes** | Normalized ISO-8601 UTC timestamp (`YYYY-MM-DDTHH:MM:SSZ`) | `time`, `datetime`, `event_time`, `@timestamp`, `date`, `log_time` |
-| `source_ip` | `string` | **Yes** | Validated source IPv4 or IPv6 address | `src_ip`, `ip`, `client_ip`, `ip_address`, `source_address`, `host_ip` |
-| `destination_ip` | `string` | No | Target network address (defaults to `10.0.0.1`) | `dest_ip`, `dst_ip`, `server_ip`, `target_ip`, `target_address` |
-| `username` | `string` | **Yes** | User, service account, or subject initiating the action | `user`, `account`, `user_name`, `user_id`, `login_id`, `actor` |
-| `event_type` | `string` | **Yes** | Normalized lowercase event type (`login`, `file_access`, `sudo`) | `event`, `action`, `type`, `activity`, `event_name`, `method` |
-| `status` | `string` | **Yes** | Normalized action outcome (`success`, `failed`, `denied`, `error`) | `result`, `outcome`, `action_result`, `state`, `disposition` |
-| `resource` | `string` | No | URI, endpoint, or target system file (defaults to `/`) | `uri`, `url`, `endpoint`, `path`, `target`, `service` |
-| `payload_size` | `integer` | No | Transferred payload bytes (defaults to `0`) | `bytes`, `size`, `bytes_sent`, `content_length`, `length` |
-| `fingerprint` | `string` | Auto | Deterministic SHA-256 hash for deduplication | Generated automatically from canonical event values |
+| **Repeated Failed Logins** | **High** | $\ge 5$ failures in $\le 10$ mins | Flags sustained brute-force authentications from the same source IP / user. | `T1110.001` (Password Guessing) |
+| **Success Following Repeated Failures** | **Critical** | $\ge 3$ failures followed by success in $\le 10$ mins | Identifies successful logins immediately preceded by repeated failures (account compromise). | `T1110.001` (Password Guessing) |
+| **Unusually High Login Frequency** | **High** | $\ge 10$ attempts in $\le 2$ mins | Flags volumetric bursts exceeding human interaction capability. | `T1110.003` (Password Spraying) |
+| **Unusual Login Hours** | **Medium / High** | $> 2$h outside baseline hours | Evaluates user logins against an established behavioral baseline ($\ge 5$ prior logins). | `T1078` (Valid Accounts) |
+| **Suspicious Login Behavioral Shift** | **High** | Unprecedented network subnet | Identifies authentications from unfamiliar subnets for users with baseline history ($\ge 8$ logins). | `T1078.003` (Local Accounts) |
 
 ---
 
@@ -126,13 +148,21 @@ CyberShield/
 │   ├── data/                     # Ingestion datasets and training data
 │   │   ├── .gitkeep
 │   │   ├── sample_logs.csv
-│   │   └── synthetic_logs.csv    # Labeled synthetic security telemetry dataset
+│   │   ├── synthetic_logs.csv    # Labeled synthetic security telemetry dataset
+│   │   ├── training_telemetry.csv# Baseline normal telemetry for ML training
+│   │   └── held_out_telemetry.csv# Held-out evaluation telemetry
+│   ├── ml/                       # Machine Learning subsystem
+│   │   ├── __init__.py
+│   │   ├── anomaly.py            # Isolation Forest anomaly detection pipeline
+│   │   └── features.py           # Feature extraction & ColumnTransformer preprocessing
 │   ├── models/                   # Entity schemas and ML model artifacts
 │   │   ├── __init__.py
 │   │   ├── alert.py              # ThreatAlert model
+│   │   ├── anomaly.py            # AnomalyFinding & ModelEvaluationReport models
 │   │   └── event.py              # SecurityEvent, IngestionResult & RejectedRow models
-│   └── tests/                    # Pytest test suite
+│   └── tests/                    # Pytest test suite (60 passing tests)
 │       ├── __init__.py
+│       ├── test_anomaly.py       # 12 tests: ML pipeline, leakage, persistence, reproducibility
 │       ├── test_detection.py     # 23 tests: rules, boundaries, baselines, deduplication
 │       ├── test_ingestion.py     # 20 tests: ingestion, schemas, validation, pandas
 │       └── test_mvp.py           # 5 tests: MVP regression tests
@@ -151,9 +181,9 @@ CyberShield/
 - [x] **Phase 01:** Foundation establishment, approved directory structure, Git configuration, and documentation.
 - [x] **Phase 02:** Standalone Security Log Ingestion module, event schema specification, synthetic telemetry, and Pytest validation.
 - [x] **Phase 03:** Explainable rule-based threat detection engine, configurable thresholds, behavioral baseline profiles, and 48 passing tests.
-- [ ] **Phase 04:** Unsupervised anomaly detection (`IsolationForest`) and multi-factor risk scoring engine.
-- [ ] **Phase 05:** React + Vite + Tailwind CSS SOC dashboard with real-time WebSocket alert streaming and incident triage drawer.
-- [ ] **Phase 06:** End-to-end synthetic attack scenarios, performance benchmarks, and hackathon demonstration readiness.
+- [x] **Phase 04:** Unsupervised machine-learning anomaly detection (`IsolationForest`), feature extraction, safe model persistence, and 60 passing tests.
+- [ ] **Phase 05:** Composite multi-factor threat risk assessment engine (0-100 scale) and real-time alert correlation.
+- [ ] **Phase 06:** React + Vite + Tailwind CSS SOC dashboard with real-time WebSocket alert streaming and incident triage drawer.
 
 ---
 
@@ -175,19 +205,19 @@ pip install -r backend/requirements.txt
 # Start the FastAPI development server
 uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
 ```
-The backend API and interactive documentation will be available at:
-- **Swagger UI:** `http://127.0.0.1:8000/docs`
-- **ReDoc:** `http://127.0.0.1:8000/redoc`
 
 ### 2. Running Tests
 ```bash
-# Run full test suite with Pytest
+# Run full test suite across all 60 tests
 pytest backend/tests
 
-# Run specifically the detection test suite
+# Run specifically the ML anomaly detection tests
+pytest backend/tests/test_anomaly.py -v
+
+# Run specifically the rule-based detection tests
 pytest backend/tests/test_detection.py -v
 
-# Run specifically the log ingestion test suite
+# Run specifically the log ingestion tests
 pytest backend/tests/test_ingestion.py -v
 
 # Run legacy unittest regression suite

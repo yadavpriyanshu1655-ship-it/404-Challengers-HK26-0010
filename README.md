@@ -4,7 +4,7 @@
 [![Challenge](https://img.shields.io/badge/Official%20Challenge-ABCS--01-red.svg)](#official-problem-abcs-01)
 [![Backend](https://img.shields.io/badge/Backend-FastAPI%20%7C%20Python%203.14-green.svg)](#technology-stack)
 [![Frontend](https://img.shields.io/badge/Frontend-React%20%7C%20Vite%20%7C%20Tailwind-cyan.svg)](#technology-stack)
-[![Tests](https://img.shields.io/badge/Tests-70%2F70%20Passing-brightgreen.svg)](#running-tests)
+[![Tests](https://img.shields.io/badge/Tests-88%2F88%20Passing-brightgreen.svg)](#running-tests)
 
 Developed by hackathon team **404 Challengers** (`HK26-0010`), **CyberShield AI** is an intelligent, explainable security operations and threat detection platform. It ingests enterprise security telemetry, isolates behavioural anomalies, classifies sophisticated cyber attacks, calculates multi-factor risk scores, and dispatches real-time security alerts to an interactive SOC analyst dashboard.
 
@@ -19,7 +19,7 @@ Developed by hackathon team **404 Challengers** (`HK26-0010`), **CyberShield AI*
 1. **AI-Based Threat Detection:** Supervised machine learning algorithms trained to detect and classify multi-stage attack patterns (e.g., brute force, credential stuffing, privilege escalation, data exfiltration, distributed reconnaissance).
 2. **Anomaly Detection:** Unsupervised outlier detection (`IsolationForest`) identifying zero-day threats, unusual volume spikes, non-standard operating hours, and atypical entity behaviour without predefined signatures.
 3. **Threat Risk Assessment:** Multi-factor risk calculation engine mapping incidents to a normalized 0–100 risk score, incorporating asset criticality, attack velocity, anomaly deviation, and MITRE ATT&CK taxonomy.
-4. **Real-Time Security Alerts:** Instant push notification mechanism (WebSockets) providing live alert feeds, deduplication, alert aggregation, and analyst triage lifecycle management (`Open` $\rightarrow$ `In Progress` $\rightarrow$ `Resolved`).
+4. **Real-Time Security Alerts:** Instant push notification mechanism providing live alert feeds, deduplication, alert aggregation, and analyst triage lifecycle management (`Open` $\rightarrow$ `Investigating` $\rightarrow$ `Resolved` $\rightarrow$ `Dismissed`).
 5. **Security Dashboard:** High-density, responsive SOC console (React + Vite + Tailwind CSS) featuring telemetry metrics, severity distributions, temporal attack trends, and interactive alert inspection drawers.
 
 ---
@@ -31,12 +31,33 @@ Developed by hackathon team **404 Challengers** (`HK26-0010`), **CyberShield AI*
 | **Frontend Framework** | React (Vite) | High-performance component architecture for SOC interface |
 | **Styling & UI** | Tailwind CSS + Lucide Icons | Responsive dark-mode SOC console design system |
 | **Visualizations** | Recharts / Native SVG | Real-time incident velocity and severity distribution charts |
-| **Backend Framework** | Python + FastAPI + Uvicorn | High-concurrency async REST API and WebSocket broadcast hub |
+| **Backend Framework** | Python + FastAPI + Uvicorn | High-concurrency async REST API and detection pipeline |
+| **API Contracts** | Pydantic v2 | Strict request/response validation and interactive OpenAPI docs |
 | **Data Processing** | Pandas + NumPy | Rolling-window aggregation, telemetry normalization, feature extraction |
 | **Machine Learning** | Scikit-learn (Isolation Forest) | Reproducible unsupervised outlier discovery & categorical preprocessing |
 | **Risk & Correlation** | Python Risk Engine | Transparent multi-factor risk scoring (0-100) & incident correlation |
 | **Persistence** | SQLite (WAL Mode) & Joblib | Lightweight relational storage & serialized ML artifact persistence |
-| **Testing & Quality** | Pytest + HTTPX TestClient | Comprehensive unit, integration, and security simulation testing |
+| **Testing & Quality** | Pytest + Starlette TestClient | Comprehensive unit, integration, API contract, and security testing |
+
+---
+
+## REST API Documentation & Endpoints
+
+CyberShield AI provides a full-featured REST API conforming to OpenAPI specifications. When the server is running, interactive documentation is accessible at `http://127.0.0.1:8000/docs` (Swagger UI) and `http://127.0.0.1:8000/redoc` (ReDoc).
+
+| HTTP Method | Endpoint | Description | Request / Query Parameters | Response Schema |
+| :--- | :--- | :--- | :--- | :--- |
+| `GET` | `/api/health` | Health check & system diagnostics | None | `HealthResponse` |
+| `POST` | `/api/logs/upload` | Ingest security telemetry CSV file | `file: UploadFile` (Multipart, $\le 10$ MB) | `UploadLogsResponse` |
+| `POST` | `/api/detection/run` | Trigger on-demand detection over persisted events | None | `DetectionRunResponse` |
+| `GET` | `/api/events` | List paginated security events with filters | `limit`, `offset`, `username`, `source_ip`, `event_type`, `status`, `search` | `EventListResponse` |
+| `GET` | `/api/events/{id}` | Retrieve specific security event details | `id: int` (Path parameter) | `SecurityEventSchema` |
+| `GET` | `/api/alerts` | List paginated alerts & correlated incidents | `limit`, `offset`, `severity`, `status`, `entity`, `search` | `AlertListResponse` |
+| `GET` | `/api/alerts/{id}` | Retrieve granular incident details & evidence | `id: int` (Path parameter) | `AlertResponse` |
+| `PATCH` | `/api/alerts/{id}` | Update alert triage state | `payload: {"status": "Resolved"}` | `{"updated": true, "id": ..., "status": ...}` |
+| `GET` | `/api/dashboard/stats` | Executive summary metrics & time trends | None | `DashboardStatsResponse` |
+| `POST` | `/api/demo/sample` | Load demo telemetry and run pipeline | None | `{"message": ..., "valid_rows": ..., ...}` |
+| `POST` | `/api/demo/reset` | Clear events, alerts, and anomalies | None | `{"reset": true, "message": ...}` |
 
 ---
 
@@ -67,37 +88,6 @@ Every incident calculates a deterministic score in $[0, 100]$ using documented c
 2. **Evidence-Based Correlation:** Only groups events that share a common entity (`username` or `source_ip`) within a configurable sliding window ($\le 15.0$ minutes). **Unrelated entities and distant timestamps are never co-mingled.**
 3. **Non-Confirmation Constraint:** **An incident is NEVER marked confirmed based solely on an anomaly score.** Anomaly-only clusters remain `is_confirmed = False`, `confirmation_status = "Unconfirmed Anomaly"`, with confidence capped at $\le 0.45$.
 4. **Safe Defensive Recommendations:** All findings provide prescriptive, non-destructive SOC guidance (e.g., out-of-band verification, session token revocation, temporary ingress rate-limiting).
-
-### End-to-End Pipeline Usage Example
-```python
-from backend.ingestion import SecurityLogIngestion
-from backend.detection import ThreatDetectionEngine
-from backend.ml import AnomalyDetectionPipeline
-from backend.risk_assessment import ThreatRiskEngine
-
-# 1. Ingestion
-ingestion = SecurityLogIngestion()
-result = ingestion.process_file("backend/data/synthetic_logs.csv")
-
-# 2. Rule Detection
-detection = ThreatDetectionEngine()
-alerts = detection.detect(result)
-
-# 3. ML Anomaly Scoring
-ml_pipeline = AnomalyDetectionPipeline.load("backend/models/anomaly_model.joblib")
-anomalies = ml_pipeline.score(result)
-
-# 4. Threat Risk Assessment & Incident Correlation
-risk_engine = ThreatRiskEngine()
-incidents = risk_engine.assess_and_correlate(
-    events=result, rule_alerts=alerts, anomaly_findings=anomalies
-)
-
-for inc in incidents:
-    print(f"[{inc.severity}] {inc.title} (Score: {inc.composite_risk_score}/100, Conf: {inc.confidence})")
-    print(f"  Explanation: {inc.risk_explanation}")
-    print(f"  Action: {inc.defensive_recommendations[0]}")
-```
 
 ---
 
@@ -132,7 +122,7 @@ CyberShield/
 ├── backend/
 │   ├── detection.py              # Configurable rule-based threat detection engine
 │   ├── ingestion.py              # Standalone Security Log Ingestion engine
-│   ├── main.py                   # FastAPI application entrypoint
+│   ├── main.py                   # FastAPI REST application entrypoint
 │   ├── requirements.txt          # Backend dependencies
 │   ├── risk_assessment.py        # Threat risk assessment & incident correlation engine
 │   ├── sample_logs.csv           # Baseline synthetic security telemetry
@@ -142,6 +132,9 @@ CyberShield/
 │   │   ├── synthetic_logs.csv    # Labeled synthetic security telemetry dataset
 │   │   ├── training_telemetry.csv# Baseline normal telemetry for ML training
 │   │   └── held_out_telemetry.csv# Held-out evaluation telemetry
+│   ├── db/                       # Persistence subsystem
+│   │   ├── __init__.py
+│   │   └── database.py           # SQLite connection, WAL mode, migrations, queries
 │   ├── ml/                       # Machine Learning subsystem
 │   │   ├── __init__.py
 │   │   ├── anomaly.py            # Isolation Forest anomaly detection pipeline
@@ -151,10 +144,15 @@ CyberShield/
 │   │   ├── alert.py              # ThreatAlert model
 │   │   ├── anomaly.py            # AnomalyFinding & ModelEvaluationReport models
 │   │   ├── event.py              # SecurityEvent, IngestionResult & RejectedRow models
+│   │   ├── isolation_forest.joblib # Persisted trained Isolation Forest model
 │   │   └── risk.py               # CorrelatedIncident, RiskFactor & RiskSeverity models
-│   └── tests/                    # Pytest test suite (70 passing tests)
+│   ├── schemas/                  # Pydantic v2 REST API schemas
+│   │   ├── __init__.py
+│   │   └── api.py                # Health, Event, Alert, Dashboard & Error schemas
+│   └── tests/                    # Pytest test suite (88 passing tests)
 │       ├── __init__.py
 │       ├── test_anomaly.py       # 12 tests: ML pipeline, leakage, persistence, reproducibility
+│       ├── test_api.py           # 18 tests: FastAPI REST endpoints, uploads, filters, CORS
 │       ├── test_detection.py     # 23 tests: rules, boundaries, baselines, deduplication
 │       ├── test_ingestion.py     # 20 tests: ingestion, schemas, validation, pandas
 │       ├── test_mvp.py           # 5 tests: MVP regression tests
@@ -176,7 +174,7 @@ CyberShield/
 - [x] **Phase 03:** Explainable rule-based threat detection engine, configurable thresholds, behavioral baseline profiles, and 48 passing tests.
 - [x] **Phase 04:** Unsupervised machine-learning anomaly detection (`IsolationForest`), feature extraction, safe model persistence, and 60 passing tests.
 - [x] **Phase 05:** Composite multi-factor threat risk assessment engine (0-100 scale), severity classification, incident correlation, and 70 passing tests.
-- [ ] **Phase 06:** Real-time security alerts via WebSockets, event stream dispatch, and automated triage lifecycle.
+- [x] **Phase 06:** FastAPI REST backend, Pydantic schemas, SQLite persistence, filtered queries, CORS, and 88 passing tests.
 - [ ] **Phase 07:** React + Vite + Tailwind CSS SOC dashboard with real-time threat feed and interactive telemetry charts.
 
 ---
@@ -202,8 +200,11 @@ uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
 
 ### 2. Running Tests
 ```bash
-# Run full test suite across all 70 tests
+# Run full test suite across all 88 tests
 pytest backend/tests
+
+# Run specifically the REST API tests
+pytest backend/tests/test_api.py -v
 
 # Run specifically the risk assessment & correlation tests
 pytest backend/tests/test_risk_assessment.py -v

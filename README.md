@@ -28,9 +28,9 @@ Developed by hackathon team **404 Challengers** (`HK26-0010`), **CyberShield AI*
 
 | Domain | Technology | Purpose |
 | :--- | :--- | :--- |
-| **Frontend Framework** | React (Vite) | High-performance component architecture for SOC interface |
+| **Frontend Framework** | React 18 (Vite 5) | High-performance component architecture for SOC interface |
 | **Styling & UI** | Tailwind CSS + Lucide Icons | Responsive dark-mode SOC console design system |
-| **Visualizations** | Recharts / Native SVG | Real-time incident velocity and severity distribution charts |
+| **Visualizations** | Recharts (v2.15) | Interactive severity distribution and temporal activity trend charts |
 | **Backend Framework** | Python + FastAPI + Uvicorn | High-concurrency async REST API and detection pipeline |
 | **API Contracts** | Pydantic v2 | Strict request/response validation and interactive OpenAPI docs |
 | **Data Processing** | Pandas + NumPy | Rolling-window aggregation, telemetry normalization, feature extraction |
@@ -38,6 +38,22 @@ Developed by hackathon team **404 Challengers** (`HK26-0010`), **CyberShield AI*
 | **Risk & Correlation** | Python Risk Engine | Transparent multi-factor risk scoring (0-100) & incident correlation |
 | **Persistence** | SQLite (WAL Mode) & Joblib | Lightweight relational storage & serialized ML artifact persistence |
 | **Testing & Quality** | Pytest + Starlette TestClient | Comprehensive unit, integration, API contract, and security testing |
+
+---
+
+## React Security Dashboard Architecture
+
+CyberShield AI features a cybersecurity operations dashboard (`frontend/`) built with React, Vite, Tailwind CSS, Recharts, and Lucide icons.
+
+### Key Components & Capabilities
+- **Overview Metrics Grid:** 5 operational cards tracking processed telemetry records, correlated threats, open triage items, high/critical priority counts, and machine learning anomaly outliers.
+- **Threat Severity Distribution:** Recharts Donut/Pie chart displaying proportions across Critical, High, Medium, and Low severity tiers with interactive hover tooltips.
+- **Threat Activity Trends:** Recharts AreaChart with gradient shading rendering 7-day telemetry velocity.
+- **Threat Alert Table:** Interactive tabular layout with real-time text search, multi-criteria severity and status dropdown filters, and pagination controls.
+- **Incident Detail Slide-over Drawer:** Granular inspection view with MITRE ATT&CK technique tags, composite risk score breakdown, evidentiary confidence, transparent supporting evidence bullet points, prescriptive safe defensive recommendations, and status triage controls (`Open`, `Investigating`, `Resolved`, `Dismissed`).
+- **Telemetry Logs Explorer:** Raw normalized event viewer with status badges, payload size, resource path, and JSON modal inspector.
+- **Detection Coverage Matrix:** Interactive matrix detailing all 5 deterministic rules, behavioral baseline parameters, and Isolation Forest ML pipeline.
+- **Transparent Synthetic Benchmark Advisory:** Prominent banner clearly designating synthetic benchmark telemetry for ABCS-01 without presenting sample metrics as unverified production findings.
 
 ---
 
@@ -158,10 +174,23 @@ CyberShield/
 │       ├── test_mvp.py           # 5 tests: MVP regression tests
 │       └── test_risk_assessment.py # 10 tests: risk scoring, severity bands, correlation
 └── frontend/                     # React + Vite + Tailwind dashboard
-    ├── index.html
-    └── assets/
-        ├── app.js
-        └── styles.css
+    ├── index.html                # Vite HTML mount
+    ├── package.json              # Node dependencies & scripts
+    ├── postcss.config.js         # PostCSS plugins
+    ├── tailwind.config.js        # Dark theme cyber tokens
+    ├── vite.config.js            # Vite build & proxy config
+    └── src/
+        ├── App.jsx               # Main dashboard layout
+        ├── index.css             # Tailwind base & custom scrollbars
+        ├── main.jsx              # React root mount
+        ├── components/
+        │   ├── alerts/           # AlertTable, AlertDetailDrawer
+        │   ├── common/           # Header, Sidebar, Badge, Skeleton, EmptyState, Banner
+        │   ├── dashboard/        # MetricsGrid, SeverityChart, TrendChart, Coverage
+        │   └── events/           # EventTable, EventDetailModal
+        ├── constants/            # Severity, status & detection configs
+        ├── data/                 # Labeled synthetic benchmark datasets
+        └── services/             # REST API service client with fallback
 ```
 
 ---
@@ -175,7 +204,8 @@ CyberShield/
 - [x] **Phase 04:** Unsupervised machine-learning anomaly detection (`IsolationForest`), feature extraction, safe model persistence, and 60 passing tests.
 - [x] **Phase 05:** Composite multi-factor threat risk assessment engine (0-100 scale), severity classification, incident correlation, and 70 passing tests.
 - [x] **Phase 06:** FastAPI REST backend, Pydantic schemas, SQLite persistence, filtered queries, CORS, and 88 passing tests.
-- [ ] **Phase 07:** React + Vite + Tailwind CSS SOC dashboard with real-time threat feed and interactive telemetry charts.
+- [x] **Phase 07:** React + Vite + Tailwind CSS SOC dashboard with threat activity charts, alert inspection, and triage controls.
+- [ ] **Phase 08:** Full-stack integration, live log upload station, and end-to-end demo verification.
 
 ---
 
@@ -198,7 +228,7 @@ pip install -r backend/requirements.txt
 uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-### 2. Running Tests
+### 2. Running Backend Tests
 ```bash
 # Run full test suite across all 88 tests
 pytest backend/tests
@@ -222,16 +252,19 @@ pytest backend/tests/test_ingestion.py -v
 python3 -m unittest backend/tests/test_mvp.py
 ```
 
-### 3. Frontend Development
+### 3. Frontend Development & Build
 ```bash
 # Navigate to frontend directory
 cd frontend
 
-# Install frontend dependencies
+# Install frontend dependencies (if not already installed)
 npm install
 
 # Start Vite development server
 npm run dev
+
+# Build production bundle
+npm run build
 ```
 
 ---

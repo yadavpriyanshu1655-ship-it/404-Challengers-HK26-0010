@@ -1,52 +1,18 @@
 <!doctype html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="theme-color" content="#0b1220">
-  <title>CyberShield AI | Security Operations</title>
-  <link rel="stylesheet" href="/assets/styles.css">
-</head>
-<body>
-<div class="app-shell">
-  <aside class="sidebar">
-    <div class="brand"><div class="brand-mark">CS</div><div><strong>CyberShield<span> AI</span></strong><small>SECURITY OPERATIONS</small></div></div>
-    <div class="nav-label">WORKSPACE</div>
-    <button class="nav-item active" data-view="dashboard"><span>▦</span> Overview</button>
-    <button class="nav-item" data-view="alerts"><span>◎</span> Threat alerts <b id="sideAlertCount">0</b></button>
-    <button class="nav-item" data-view="ingestion"><span>⇧</span> Log ingestion</button>
-    <div class="sidebar-bottom"><div class="status-dot"></div><div><strong>Detection engine</strong><small id="connectionText">Checking connection…</small></div></div>
-  </aside>
-  <main class="main">
-    <header class="topbar"><div><div class="eyebrow">SECURITY INTELLIGENCE / <span id="pageCrumb">OVERVIEW</span></div><h1 id="pageTitle">Security overview</h1></div><div class="top-actions"><span class="live-pill"><i></i> LOCAL DEMO</span><button class="icon-button" id="refreshBtn" title="Refresh data">↻</button></div></header>
-    <section id="view-dashboard" class="view">
-      <div class="welcome"><div><p class="eyebrow">THREAT MONITORING</p><h2>Know what matters.<br><span>Respond with confidence.</span></h2><p class="muted">Explainable security detections from your processed log events.</p></div><div class="shield-art"><div class="shield">◇</div><div class="orbit orbit-one"></div><div class="orbit orbit-two"></div></div></div>
-      <div class="metrics">
-        <article class="metric"><div class="metric-top"><span>Processed events</span><span class="metric-icon">≋</span></div><div class="metric-value" id="mEvents">—</div><div class="metric-foot">Validated log records</div></article>
-        <article class="metric"><div class="metric-top"><span>Total alerts</span><span class="metric-icon">◎</span></div><div class="metric-value" id="mAlerts">—</div><div class="metric-foot">Unique detection findings</div></article>
-        <article class="metric"><div class="metric-top"><span>Open alerts</span><span class="metric-icon amber">◷</span></div><div class="metric-value" id="mOpen">—</div><div class="metric-foot">Require analyst review</div></article>
-        <article class="metric"><div class="metric-top"><span>High / Critical</span><span class="metric-icon red">△</span></div><div class="metric-value" id="mHigh">—</div><div class="metric-foot">Elevated risk findings</div></article>
-      </div>
-      <div class="content-grid">
-        <article class="panel"><div class="panel-head"><div><h3>Severity distribution</h3><p>Alerts grouped by assigned severity</p></div><span class="panel-tag">LIVE API</span></div><div id="severityChart" class="severity-chart"><div class="empty-chart">No alerts yet. Upload sample logs to begin.</div></div></article>
-        <article class="panel"><div class="panel-head"><div><h3>Detection coverage</h3><p>Current rule-based capabilities</p></div></div><div class="coverage-list"><div><span class="coverage-icon">⌁</span><div><strong>Brute-force attempts</strong><small>5+ failed logins in 10 minutes</small></div><span class="enabled">ENABLED</span></div><div><span class="coverage-icon">↗</span><div><strong>Suspicious login sequence</strong><small>Success after repeated failures</small></div><span class="enabled">ENABLED</span></div><div><span class="coverage-icon">✳</span><div><strong>Machine learning</strong><small>Not enabled in this MVP</small></div><span class="deferred">DEFERRED</span></div></div></article>
-      </div>
-      <article class="panel alerts-panel"><div class="panel-head"><div><h3>Recent alerts</h3><p>Latest findings generated from processed logs</p></div><button class="text-button" data-goto="alerts">View all alerts →</button></div><div id="recentAlerts"><div class="empty-state">No alerts yet. Load the synthetic sample to see detections.</div></div></article>
-    </section>
-    <section id="view-alerts" class="view hidden">
-      <article class="panel"><div class="panel-head"><div><h3>Threat alerts</h3><p>Investigate findings and review supporting evidence.</p></div><span class="panel-tag" id="alertTotalTag">0 RECORDS</span></div>
-      <div class="filters"><input id="searchInput" type="search" placeholder="Search IP, category or alert ID…"><select id="severityFilter"><option>All</option><option>Critical</option><option>High</option><option>Medium</option><option>Low</option></select><select id="statusFilter"><option>All</option><option>Open</option><option>Resolved</option></select></div>
-      <div id="alertsTable"></div></article>
-      <article class="panel detail-panel" id="alertDetail"><div class="empty-state">Select an alert to inspect its evidence and recommendations.</div></article>
-    </section>
-    <section id="view-ingestion" class="view hidden">
-      <div class="ingestion-layout"><article class="panel upload-panel"><div class="upload-icon">⇧</div><h3>Ingest security logs</h3><p class="muted">Upload a CSV to validate events, run detection rules, and generate alerts.</p><form id="uploadForm"><label class="file-drop" for="csvFile"><span class="file-symbol">＋</span><strong>Choose a CSV file</strong><small>Required: timestamp, source_ip, username, event_type, status</small><input id="csvFile" type="file" accept=".csv,text/csv" required></label><button class="primary-button full" type="submit" id="uploadButton">Upload and analyze</button></form><button class="secondary-button full" id="sampleButton">Run synthetic sample</button><div id="uploadResult" class="result-box hidden"></div><p class="fine-print">Demo data only. Upload logs you own or are authorized to analyze.</p></article>
-      <article class="panel"><div class="panel-head"><div><h3>Processing pipeline</h3><p>Each upload passes through these steps</p></div></div><div class="pipeline"><div class="pipeline-step"><span>01</span><div><strong>Validate</strong><small>Check CSV headers, timestamps, and required values.</small></div></div><div class="pipeline-step"><span>02</span><div><strong>Normalize & store</strong><small>Standardize event fields and avoid duplicate records.</small></div></div><div class="pipeline-step"><span>03</span><div><strong>Detect patterns</strong><small>Evaluate repeated failures and suspicious login sequences.</small></div></div><div class="pipeline-step"><span>04</span><div><strong>Prioritize</strong><small>Assign deterministic severity, risk, and evidence.</small></div></div></div><button class="danger-button" id="resetButton">Reset demo data</button></article></div>
-    </section>
-    <footer><span>CYBERSHIELD AI <i>•</i> 404 CHALLENGERS</span><span>Explainable detection · Synthetic demo environment</span></footer>
-  </main>
-</div>
-<div id="toast" class="toast hidden" role="status"></div>
-<script src="/assets/app.js"></script>
-</body>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0a0f1d" />
+    <meta name="description" content="CyberShield AI — Intelligent Cyber Threat Detection & SOC Operations Dashboard" />
+    <title>CyberShield AI | SOC Operations Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  </head>
+  <body class="bg-cyber-bg text-slate-100 antialiased min-h-screen selection:bg-cyan-500/30 selection:text-cyan-200">
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
 </html>

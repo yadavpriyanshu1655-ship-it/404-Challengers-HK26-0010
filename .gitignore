@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+cybershield.db
+*.db-journal
+.DS_Store
+node_modules/
+dist/

@@ -148,6 +148,7 @@ class RejectedRowSummary(BaseModel):
 
 class UploadLogsResponse(BaseModel):
     """Response returned after processing an uploaded security log file."""
+    success: bool = Field(default=True, description="Whether upload succeeded")
     message: str = Field(default="CSV processed", description="Operational outcome message")
     rows_received: int = Field(..., description="Total lines received in CSV payload")
     valid_rows: int = Field(..., description="Number of validated rows")

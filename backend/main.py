@@ -42,7 +42,13 @@ from backend.db.database import (
     insert_or_update_alert,
 )
 from backend.detection import ThreatDetectionEngine
-from backend.ingestion import EmptyFileError, InvalidFileError, SecurityLogIngestion
+from backend.ingestion import (
+    EmptyFileError,
+    IngestionError,
+    InvalidFileError,
+    MissingColumnError,
+    SecurityLogIngestion,
+)
 from backend.ml.anomaly import AnomalyDetectionPipeline
 from backend.models.alert import ThreatAlert
 from backend.models.event import IngestionResult, SecurityEvent
@@ -112,10 +118,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount frontend assets if directory exists
-assets_dir = WEB_DIR / "assets"
-if assets_dir.exists():
-    app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
+# Mount frontend assets if directory exists (prefer compiled React dist)
+dist_dir = WEB_DIR / "dist"
+if (dist_dir / "assets").exists():
+    app.mount("/assets", StaticFiles(directory=str(dist_dir / "assets")), name="assets")
+elif (WEB_DIR / "assets").exists():
+    app.mount("/assets", StaticFiles(directory=str(WEB_DIR / "assets")), name="assets")
 
 
 # =====================================================================
@@ -331,6 +339,9 @@ async def global_unhandled_exception_handler(request: Request, exc: Exception) -
 @app.get("/", include_in_schema=False)
 def serve_home():
     """Serve frontend index if available, otherwise return health information."""
+    dist_index = WEB_DIR / "dist" / "index.html"
+    if dist_index.exists():
+        return FileResponse(dist_index)
     index_file = WEB_DIR / "index.html"
     if index_file.exists():
         return FileResponse(index_file)
@@ -391,7 +402,7 @@ async def upload_security_logs(file: UploadFile = File(...)) -> UploadLogsRespon
     processor = SecurityLogIngestion(existing_fingerprints=existing_fps)
     try:
         ingestion_result = processor.process_csv_string(csv_text)
-    except (EmptyFileError, InvalidFileError) as exc:
+    except (EmptyFileError, InvalidFileError, MissingColumnError, IngestionError) as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),

@@ -1,7 +1,7 @@
 import React from 'react';
 import { LayoutDashboard, ShieldAlert, ListFilter, Cpu, UploadCloud } from 'lucide-react';
 
-export function Sidebar({ currentView, onViewChange, openAlertsCount = 0 }) {
+export function Sidebar({ currentView, onViewChange, openAlertsCount = 0, onOpenUpload }) {
   const navItems = [
     { id: 'dashboard', label: 'SOC Overview', icon: LayoutDashboard },
     { id: 'alerts', label: 'Threat Alerts', icon: ShieldAlert, badge: openAlertsCount },
@@ -44,6 +44,18 @@ export function Sidebar({ currentView, onViewChange, openAlertsCount = 0 }) {
             })}
           </nav>
         </div>
+
+        {onOpenUpload && (
+          <div className="px-1">
+            <button
+              onClick={onOpenUpload}
+              className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 hover:border-cyan-500/50 transition-all shadow-sm shadow-cyan-500/10"
+            >
+              <UploadCloud className="w-3.5 h-3.5" />
+              <span>Ingest Security Logs</span>
+            </button>
+          </div>
+        )}
 
         <div className="pt-4 border-t border-slate-800/60">
           <span className="text-[10px] font-mono tracking-wider text-slate-500 uppercase px-3 block mb-2 font-semibold">

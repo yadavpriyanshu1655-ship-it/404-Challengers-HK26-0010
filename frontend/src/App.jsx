@@ -15,6 +15,7 @@ import { SyntheticBanner } from './components/common/SyntheticBanner';
 import { ErrorAlert } from './components/common/ErrorAlert';
 import { CardSkeleton, TableSkeleton } from './components/common/LoadingSkeleton';
 import { EmptyState } from './components/common/EmptyState';
+import { LogUploadModal } from './components/ingestion/LogUploadModal';
 
 import { MetricsGrid } from './components/dashboard/MetricsGrid';
 import { SeverityDistributionChart } from './components/dashboard/SeverityDistributionChart';
@@ -35,6 +36,7 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState(null);
+  const [isUploadOpen, setIsUploadOpen] = useState(false);
 
   // Core telemetry state
   const [stats, setStats] = useState(null);
@@ -119,6 +121,7 @@ export default function App() {
         isLive={isLive}
         isRefreshing={isRefreshing}
         onRefresh={() => loadData(false)}
+        onOpenUpload={() => setIsUploadOpen(true)}
         onLoadSample={handleLoadSample}
         onReset={handleReset}
       />
@@ -130,6 +133,7 @@ export default function App() {
           currentView={currentView}
           onViewChange={setCurrentView}
           openAlertsCount={openAlertsCount}
+          onOpenUpload={() => setIsUploadOpen(true)}
         />
 
         {/* Content Area */}
@@ -298,6 +302,13 @@ export default function App() {
           onClose={() => setSelectedEvent(null)}
         />
       )}
+
+      {/* Security Log Ingestion Modal */}
+      <LogUploadModal
+        isOpen={isUploadOpen}
+        onClose={() => setIsUploadOpen(false)}
+        onUploadSuccess={() => loadData(false)}
+      />
     </div>
   );
 }

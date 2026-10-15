@@ -4,7 +4,7 @@
 [![Challenge](https://img.shields.io/badge/Official%20Challenge-ABCS--01-red.svg)](#official-problem-abcs-01)
 [![Backend](https://img.shields.io/badge/Backend-FastAPI%20%7C%20Python%203.14-green.svg)](#technology-stack)
 [![Frontend](https://img.shields.io/badge/Frontend-React%20%7C%20Vite%20%7C%20Tailwind-cyan.svg)](#technology-stack)
-[![Tests](https://img.shields.io/badge/Tests-88%2F88%20Passing-brightgreen.svg)](#running-tests)
+[![Tests](https://img.shields.io/badge/Tests-93%2F93%20Passing-brightgreen.svg)](#running-tests)
 
 Developed by hackathon team **404 Challengers** (`HK26-0010`), **CyberShield AI** is an intelligent, explainable security operations and threat detection platform. It ingests enterprise security telemetry, isolates behavioural anomalies, classifies sophisticated cyber attacks, calculates multi-factor risk scores, and dispatches real-time security alerts to an interactive SOC analyst dashboard.
 
@@ -205,7 +205,23 @@ CyberShield/
 - [x] **Phase 05:** Composite multi-factor threat risk assessment engine (0-100 scale), severity classification, incident correlation, and 70 passing tests.
 - [x] **Phase 06:** FastAPI REST backend, Pydantic schemas, SQLite persistence, filtered queries, CORS, and 88 passing tests.
 - [x] **Phase 07:** React + Vite + Tailwind CSS SOC dashboard with threat activity charts, alert inspection, and triage controls.
-- [ ] **Phase 08:** Full-stack integration, live log upload station, and end-to-end demo verification.
+- [x] **Phase 08:** Full-stack integration, live log upload station, and end-to-end demo verification (93 passing tests).
+
+---
+
+## Full-Stack Integration & SOC Workflow (Phase 08)
+
+CyberShield AI connects the React operations dashboard directly with the FastAPI intelligence backend:
+
+### Complete 8-Step SOC Workflow
+1. **Upload Telemetry:** Analysts drop or select a CSV log file via the **Upload CSV** modal (or click **Load Benchmark Sample**).
+2. **Validate & Ingest:** The backend validates mandatory fields (`timestamp`, `source_ip`, `username`, `event_type`, `status`), normalizes ISO timestamps, and detects duplicates using SHA-256 fingerprinting.
+3. **Detection Execution:** Ingested events trigger the 5 deterministic detection rules and the Scikit-learn `IsolationForest` anomaly scoring pipeline.
+4. **Risk Correlation:** Findings are evaluated through the 4-tier risk matrix (Low, Medium, High, Critical) with transparent additive evidence scores and MITRE ATT&CK taxonomy tags.
+5. **Persistent Storage:** Accepted events, calculated anomalies, and deduplicated threat alerts are committed to SQLite (`cybershield.db`).
+6. **Live Dashboard Sync:** Overview metrics, severity distribution donut charts, and temporal activity curves automatically update.
+7. **Incident Inspection:** Analysts open any alert in the slide-over drawer to inspect supporting evidence, observed values vs. thresholds, and prescriptive safe defensive actions.
+8. **Triage Lifecycle:** Analysts search across entities/IPs, filter by severity, and transition alert triage status (`Open` $\rightarrow$ `Investigating` $\rightarrow$ `Resolved` $\rightarrow$ `Dismissed`).
 
 ---
 
@@ -230,8 +246,11 @@ uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
 
 ### 2. Running Backend Tests
 ```bash
-# Run full test suite across all 88 tests
+# Run full test suite across all 93 tests
 pytest backend/tests
+
+# Run specifically the Phase 08 End-to-End integration tests
+pytest backend/tests/test_e2e_integration.py -v
 
 # Run specifically the REST API tests
 pytest backend/tests/test_api.py -v

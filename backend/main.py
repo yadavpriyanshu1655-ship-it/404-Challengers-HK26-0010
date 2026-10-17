@@ -83,12 +83,17 @@ MODEL_PATH = MODELS_DIR / "isolation_forest.joblib"
 # Maximum CSV upload size (10 MB)
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 
-# Allowed CORS origins for frontend development
+# Allowed CORS origins for frontend development and deployed dashboard.
 ALLOWED_ORIGINS = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
+    origin.strip()
+    for origin in os.environ.get(
+        "CYBERSHIELD_CORS_ORIGINS",
+        "http://localhost:5173,"
+        "http://127.0.0.1:5173,"
+        "http://localhost:3000,"
+        "http://127.0.0.1:3000",
+    ).split(",")
+    if origin.strip()
 ]
 
 # Rule to Category name mapping for clear, explainable findings

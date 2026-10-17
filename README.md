@@ -359,6 +359,20 @@ npm run dev
 npm run build
 ```
 
+### 4. Deploy to Render
+
+The repository includes a Render Blueprint (`render.yaml`) that deploys the
+FastAPI backend and Vite dashboard as separate services:
+
+1. Push this repository to GitHub.
+2. In Render, select **New + → Blueprint** and connect this repository.
+3. Review the two services and select **Apply**.
+4. Open the `cybershield-dashboard` service URL when both deployments finish.
+
+The Blueprint configures the dashboard's API URL and the backend's CORS origin
+automatically. Free Render web services use an ephemeral filesystem, so demo
+SQLite data can be lost when the backend restarts or redeploys.
+
 ---
 
 ## Hackathon Submission & Demonstration Guide (Phase 10)
